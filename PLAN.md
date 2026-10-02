@@ -8,8 +8,8 @@
 - Estado: React Context + `useReducer` (ver §0). No se decide Zustand hasta que
   el estado lo justifique.
 - Diseño: los `design.md` (Warm Screenplay Minimal / Cinematic Script Minimal)
-  son la fuente de verdad de §8; **hoy no existen en el repo y hay que crearlos**
-  en este proyecto (`design/design.md` + `design/design.dark.md`) antes de §8,
+  son la fuente de verdad de §8; **ya existen en el repo**
+  (`design/design.md` + `design/design.dark.md`, verificado 2026-10-02),
   o §8 queda sin referencia verificable.
 
 Las fases 0–10 del MVP son secuenciales; la "Fase 2" (post-MVP) es opcional.
@@ -38,7 +38,7 @@ Depende de: —
     lib/            utils.ts (cn), format, id
     store/          ScriptsProvider (context + reducer)
     types/          Script, Theme, ParseResult
-    vendor/         fountain.mjs + fountain.d.ts (copiados)
+    vendor/         fountain.mjs + fountain.d.mts (copiados, ver gotcha §3)
   public/
     fountain/       .wasm + wasm_exec.js + manifest.json
     fonts/          Plus Jakarta Sans, Courier Prime (self-host)
@@ -138,11 +138,14 @@ rompe.
 bundle). Por eso el wrapper y sus tipos se copian aparte a `src/vendor/`: son
 código que el bundler compila, no un asset de `public/`.
 
-**Gotcha TS a verificar en §9.4**: importar `./vendor/fountain.mjs` puede
-requerir que el `.d.ts` se resuelva junto al `.mjs`. Si `tsc` se queja,
-opciones: renombrar la copia a `fountain.d.mts`, o usar el `exports`+`types`
-del propio `dist/package.json` vía `npm i ../2026-08-31-fountain-parser/dist`
-(alternativa válida si el copy manual da guerra).
+**Gotcha TS (resuelto 2026-10-02, verificado con `tsc -b`)**: importar
+`./vendor/fountain.mjs` con un `fountain.d.ts` vecino falla con TS7016
+(`implicitly has an 'any' type`); el emparejamiento correcto es
+`.mjs` ↔ `.d.mts`. `scripts/sync.mjs` copia
+`dist/fountain.d.ts` → `src/vendor/fountain.d.mts` y borra el
+`fountain.d.ts` de sincronizaciones anteriores. La alternativa del
+`exports`+`types` de `dist/package.json` queda como plan B si el copy
+manual da guerra.
 
 ## 4. Singleton del runtime — `src/fountain.ts`
 
@@ -166,6 +169,42 @@ en el chunk). Usar `'./fountain'` (relativo) **desde el inicio**, no
 ni `https://localhost` (Capacitor), y cambiarlo luego obliga a re-verificar
 §9.1/§9.2 (ver Fase 2). Mantener el contador `window.__fountainBoots` del
 fixture para la aserción de StrictMode (§9.5).
+
+> Estado 2026-10-02: implementado en `src/fountain.ts` (verificado
+> `tsc -b` + `lint` + `build` limpios; dev sirve
+> `./fountain/fountain-parser.wasm` 200 como `application/wasm` y no hay
+> copia del wrapper en `public/`). El fixture usa `base: '/fountain'`;
+> aquí es `'./fountain'` a propósito (ver párrafo anterior). La aserción
+> `window.__fountainBoots === 1` (§9.5) se verifica en §5, cuando la UI
+> monte `loadFountain()` (aún nadie lo llama).
+
+## Deuda / desvíos registrados (2026-10-02)
+
+Verificados §0–§4 sin bloqueantes; pendientes que no impiden §4 pero hay
+que saldar antes o durante las fases indicadas:
+
+- §2 `tsconfig.app.json`: el plan pide `baseUrl: "."` (shadcn lo requería),
+  pero con TypeScript 6 `baseUrl` está deprecado (`tsc -b` falla con
+  TS5101; dejará de funcionar en TS 7). **Saldado de otro modo**: solo
+  `paths: { "@/*" }`, que TS ≥4.1 resuelve relativo al tsconfig y Vite
+  cubre con su alias; verificado `tsc -b` + `build` limpios con un
+  import `@/` real (`ui/dialog.tsx`). No reintroducir `baseUrl` salvo
+  que el CLI de shadcn lo exija de nuevo.
+- §2 scaffold: `typescript: ~6.0.2` y `vite: 8.3.0` frente a `typescript@^5` /
+  Vite 7 del plan. Deriva aceptable: lo que importa (pineado exacto de
+  `vite`, `react`, `react-dom`) se cumple; no reaccionar salvo que §9.4
+  dé guerra.
+- §2b `src/lib/utils.ts`: es `export { cn } from 'cn'` (artefacto del estilo
+  `radix-nova` de `shadcn init`), no el helper `clsx + tailwind-merge` que
+  el plan asume. Revisar en §8 si `cn` cubre `tailwind-merge`; si no,
+  volver al helper manual.
+- §2/§8 fuentes: instalado `@fontsource-variable/geist`; `public/fonts/`
+  sigue vacío (Plus Jakarta Sans + Courier Prime self-host pendientes
+  de §8). `src/index.css` trae además `tw-animate-css` y
+  `shadcn/tailwind.css` del init, fuera del esbozo del plan.
+- §8 tokens: `src/index.css` usa la paleta `oklch` neutra por defecto de
+  shadcn, no los tokens Warm/Cinematic de este plan. Esperado (se
+  implementa en §8); no usar los colores actuales como referencia.
 
 ## 5. UI
 

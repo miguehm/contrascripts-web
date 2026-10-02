@@ -36,12 +36,14 @@ make -C ../2026-08-31-fountain-parser dist
 # 2. Sincronizar en cada dev/build (a partir de §3: npm run sync)
 make -C ../2026-08-31-fountain-parser package DIR=$PWD/public/fountain
 mkdir -p src/vendor
-cp ../2026-08-31-fountain-parser/dist/fountain.mjs \
-   ../2026-08-31-fountain-parser/dist/fountain.d.ts src/vendor/
+cp ../2026-08-31-fountain-parser/dist/fountain.mjs src/vendor/
+cp ../2026-08-31-fountain-parser/dist/fountain.d.ts src/vendor/fountain.d.mts
+# (los tipos se renombran a .d.mts: es el emparejamiento que tsc resuelve
+# para un import de ./vendor/fountain.mjs; ver gotcha §3 del PLAN.md)
 ```
 
 - `public/fountain/`: `.wasm` + `wasm_exec.js` + `manifest.json` (assets servidos tal cual).
-- `src/vendor/`: `fountain.mjs` + `fountain.d.ts` (código que el bundler compila).
+- `src/vendor/`: `fountain.mjs` + `fountain.d.mts` (código que el bundler compila).
   Está en `.gitignore` porque es un artefacto regenerable; un clon limpio
   debe correr `npm run sync` antes de compilar.
 
