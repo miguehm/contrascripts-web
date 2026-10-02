@@ -114,7 +114,7 @@ export function ScriptsSidebar() {
                     aria-label={`Abrir guion ${s.title}`}
                     className={`min-w-0 flex-1 rounded-sm border px-2 py-1.5 text-left outline-none transition-colors focus-visible:border-ring ${
                       active
-                        ? 'border-l-2 border-l-amber-600 border-border bg-accent'
+                        ? 'border-border border-l-2 border-l-primary bg-accent'
                         : 'border-transparent hover:bg-accent/60'
                     }`}
                   >

@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Guion — Editor Fountain</title>
+    <script>
+      // §8: aplica .dark antes del primer pintado para evitar FOUC.
+      // Por defecto light (Warm); solo dark si guion.theme.v1 === "dark".
+      try {
+        if (
+          JSON.parse(localStorage.getItem('guion.theme.v1') || 'null') ===
+          'dark'
+        ) {
+          document.documentElement.classList.add('dark')
+        }
+      } catch {
+        /* localStorage inaccesible: se queda en light */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

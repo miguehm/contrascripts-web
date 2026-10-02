@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import {
   ResizableHandle,
   ResizablePanel,
@@ -108,6 +109,7 @@ export default function App() {
             {stats.elements} elementos · ~{stats.pages} pág.
           </span>
           <ExportButton fountain={fountain} text={text} filename={pdfName} />
+          <ThemeToggle />
         </span>
       </header>
 
