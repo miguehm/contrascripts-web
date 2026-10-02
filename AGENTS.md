@@ -14,6 +14,7 @@ npm run lint          # eslint .
 npm run typecheck     # tsc --noEmit
 npm run test          # vitest run
 npm run test:watch    # vitest
+npm run test:e2e       # playwright (boot, parse, PDF, persistencia)
 npm run format        # prettier --write .
 npm run format:check  # prettier --check .
 npm run sync          # node scripts/sync.mjs (regenera public/fountain + src/vendor)

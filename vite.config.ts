@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -13,5 +13,9 @@ export default defineConfig({
     alias: {
       '@': path.resolve(rootDir, './src'),
     },
+  },
+  // §10: vitest solo unit (src/); los e2e viven en tests/ y los corre playwright.
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/**'],
   },
 })
