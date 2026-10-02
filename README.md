@@ -25,6 +25,24 @@ npm run preview # servir dist/ para verificar como en producción
 > En fase 0 aún no hay `package.json`: estos scripts se crean en §2 (scaffold)
 > y §3 (`sync`).
 
+## Deploy (Cloudflare Pages, §7)
+
+Deploy manual de `dist/` (decisión §7: sin CSP en el primer deploy,
+sin `Cache-Control` en `/fountain/*` — ETag por defecto — y fuentes
+bundleadas vía `@fontsource`, que ya satisfacen `font-src 'self'`):
+
+```bash
+npm run build                              # sync + tsc -b + vite build → dist/
+npx wrangler pages deploy dist --project-name guion
+# o arrastra la carpeta dist/ en el dashboard de Pages
+```
+
+> Backlog: conectar git a Pages queda para después. El build de Pages
+> desde git hoy fallaría porque `npm run sync` necesita el repo hermano
+> `../2026-08-31-fountain-parser` + toolchain Go (`make dist`/`package`).
+> Opciones: vendorizar el bundle, submodule con caché, o un job CI que
+> publique `dist/` y Pages lo consuma.
+
 ## De dónde salen los binarios
 
 Los artefactos WASM **no** se versionan aquí; se regeneran desde el parser:
