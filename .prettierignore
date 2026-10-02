@@ -1,0 +1,8 @@
+# Artefactos y generado: nunca formatear
+dist/
+src/vendor/
+src/components/ui/
+
+# Docs de spec/diseño: su formato (alineación de tokens, samples) es
+# intencional y prettier lo degradaría; se revisan a mano.
+*.md
