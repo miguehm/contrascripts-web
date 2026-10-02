@@ -9,7 +9,7 @@
 // `make -C` cambia de cwd y una relativa se resolvería mal.
 
 import { execFile } from 'node:child_process'
-import { copyFile, mkdir, readdir, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -29,7 +29,16 @@ const ASSETS = [
   'wasm_exec.js',
   'manifest.json',
 ]
-const WRAPPER = ['fountain.mjs', 'fountain.d.ts']
+// El wrapper se importa como `./vendor/fountain.mjs`; TypeScript solo lo
+// empareja con sus tipos si la declaración vecina es `fountain.d.mts`
+// (mapeo .mjs ↔ .d.mts con moduleResolution bundler + gotcha §3 del plan:
+// un `fountain.d.ts` vecino no se resuelve y `tsc -b` falla con TS7016).
+const WRAPPER = [
+  { from: 'fountain.mjs', to: 'fountain.mjs' },
+  { from: 'fountain.d.ts', to: 'fountain.d.mts' },
+]
+// Resto de una época anterior del sync (cuando se copiaba `fountain.d.ts`).
+const STALE_WRAPPER = ['fountain.d.ts']
 
 async function main() {
   // 1. make package → public/fountain (crea el dir, copia ASSETS, borra
@@ -67,14 +76,17 @@ async function main() {
 
   // 3. Copiar wrapper + tipos a src/vendor/.
   await mkdir(VENDOR_DIR, { recursive: true })
-  for (const name of WRAPPER) {
-    await copyFile(path.join(DIST_DIR, name), path.join(VENDOR_DIR, name))
+  for (const { from, to } of WRAPPER) {
+    await copyFile(path.join(DIST_DIR, from), path.join(VENDOR_DIR, to))
+  }
+  for (const name of STALE_WRAPPER) {
+    await rm(path.join(VENDOR_DIR, name), { force: true })
   }
 
   // 4. Log mínimo con tamaños.
   for (const name of [
     ...ASSETS.map((n) => path.join(PUBLIC_DIR, n)),
-    ...WRAPPER.map((n) => path.join(VENDOR_DIR, n)),
+    ...WRAPPER.map(({ to }) => path.join(VENDOR_DIR, to)),
   ]) {
     const { size } = await stat(name)
     console.log(`sync: ${path.relative(ROOT, name)} (${size} bytes)`)
