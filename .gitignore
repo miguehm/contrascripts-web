@@ -4,5 +4,5 @@ dist/
 .env*
 .DS_Store
 *.local
-src/vendor/
+src/vendor/*
 !src/vendor/.gitkeep
