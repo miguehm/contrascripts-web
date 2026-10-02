@@ -6,3 +6,5 @@ dist/
 *.local
 src/vendor/*
 !src/vendor/.gitkeep
+public/fountain/*
+!public/fountain/.gitkeep

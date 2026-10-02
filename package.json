@@ -34,12 +34,13 @@
   "name": "guion",
   "private": true,
   "scripts": {
-    "build": "tsc -b && vite build",
-    "dev": "vite",
+    "build": "npm run sync && tsc -b && vite build",
+    "dev": "npm run sync && vite",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "preview": "vite preview",
+    "sync": "node scripts/sync.mjs",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
