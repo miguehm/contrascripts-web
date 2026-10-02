@@ -1,8 +1,10 @@
-// Tests de integración §10: boot único, parse, exportar PDF y persistencia.
-// Heredan el patrón de web/vite/tests del parser. Corren headless en CI.
+// Tests de integración §10 (preview PDF): boot único, render en worker +
+// raster con pdf.js, exportar PDF desde el caché y persistencia.
+// El contenido del guion vive en <canvas>: se aserta por páginas
+// (aria-label "Página N de M"), no por texto.
 import { expect, test } from '@playwright/test'
 
-test('boot único + parse reactivo', async ({ page }) => {
+test('boot único + preview PDF del seed', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
   expect(
@@ -10,27 +12,62 @@ test('boot único + parse reactivo', async ({ page }) => {
       () => (window as unknown as Record<string, unknown>).__fountainBoots,
     ),
   ).toBe(1)
-  // El seed de ejemplo ya parsea al arrancar (acotado a la hoja visible).
-  await expect(page.locator('article').getByText('BRICK & STEEL')).toBeVisible()
+  // El seed de ejemplo renderiza a 3 páginas (worker + pdf.js de punta a punta).
+  await expect(
+    page.getByRole('document', { name: 'Guion en PDF, 3 páginas' }),
+  ).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('img', { name: 'Página 1 de 3' })).toBeVisible({
+    timeout: 30_000,
+  })
 })
 
-test('editar actualiza el preview', async ({ page }) => {
+test('editar actualiza el preview PDF', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
-  const marker = `EVALUACION-${Date.now()}`
-  await page.locator('textarea:visible').fill(`INT. CASA - DÍA\n\n${marker}\n`)
-  await expect(page.locator('article').getByText(marker)).toBeVisible({
-    timeout: 10_000,
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  // Texto largo que fuerza una segunda página: si el canvas la muestra, el
+  // debounce + worker + pdf.js reaccionaron al cambio.
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(60)
+  await page.locator('textarea:visible').fill(longText)
+  await expect(page.getByRole('img', { name: /Página 2 de/ })).toBeVisible({
+    timeout: 30_000,
   })
 })
 
 test('exportar PDF descarga un PDF válido', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  // Bytes listos: el botón se habilita al completar el primer render.
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
   const download = page.waitForEvent('download', { timeout: 30_000 })
   await page.getByRole('button', { name: /exportar/i }).click()
   const path = await (await download).path()
   expect(path).toBeTruthy()
+})
+
+test('pausar detiene el auto-preview y reanudar lo devuelve', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  await page.getByRole('button', { name: 'Pausar vista previa' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Reanudar vista previa' }),
+  ).toBeVisible()
+  await expect(page.getByText('Actualizar ahora')).toBeVisible()
+  await page.getByRole('button', { name: 'Reanudar vista previa' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Pausar vista previa' }),
+  ).toBeVisible()
 })
 
 test('persistencia tras recarga', async ({ page }) => {

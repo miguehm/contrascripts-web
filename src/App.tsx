@@ -1,14 +1,16 @@
-// src/App.tsx — shell §5 + multi-guion §6: boot + editor + preview +
+// src/App.tsx — shell §5 + multi-guion §6: boot + editor + preview PDF +
 // warnings + export.
 //
 // El texto editable ya no es un `useState` local: viene del guion activo
 // del store (`useScripts()`); cada tecla hace `updateText()` y el provider
 // persiste con debounce (~500ms) + flush al salir/cambiar (§6).
-// Desktop (>md): sidebar de guiones + dual-pane con `ResizablePanelGroup`.
-// Móvil: selector compacto en header + tabs Editor/Preview. Los tokens
-// Warm/Cinematic (§8) quedan fuera.
+// La vista previa es el PDF generado por `fountain-pdf.wasm` en un Web
+// Worker (`usePdfPreview`), rasterizado con pdf.js: lo visible es lo que
+// se descarga. Desktop (>md): sidebar de guiones + dual-pane con
+// `ResizablePanelGroup`. Móvil: selector compacto en header + tabs
+// Editor/Preview. Los tokens Warm/Cinematic (§8) quedan fuera.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
@@ -20,7 +22,8 @@ import {
 } from '@/components/ui/resizable'
 import { Separator } from '@/components/ui/separator'
 import { Editor } from '@/features/editor/Editor'
-import { Preview } from '@/features/preview/Preview'
+import { PdfPreview } from '@/features/preview/PdfPreview'
+import { usePdfPreview } from '@/features/preview/usePdfPreview'
 import { Warnings } from '@/features/preview/Warnings'
 import { ImportButton } from '@/features/scripts/ImportButton'
 import { ScriptSwitcher } from '@/features/scripts/ScriptSwitcher'
@@ -78,14 +81,32 @@ function StatusBadge({
 export default function App() {
   const { activeScript, updateText, createScript } = useScripts()
   const [tab, setTab] = useState<Tab>('editor')
+  const [previewPaused, setPreviewPaused] = useState(false)
   const text = activeScript?.text ?? ''
-  const { status, fountain, doc, warnings, retry } = useParser(text)
+  const { status, doc, warnings, retry } = useParser(text)
+
+  // El preview solo trabaja si es visible en algún layout: en móvil el tab
+  // activo manda; en desktop el dual-pane siempre está montado.
+  const [isDesktop, setIsDesktop] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(min-width: 768px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onChange = () => setIsDesktop(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  const preview = usePdfPreview(text, {
+    paused: previewPaused,
+    visible: tab === 'preview' || isDesktop,
+  })
 
   const stats = useMemo(() => {
-    if (!doc) return { elements: 0, pages: 1 }
-    const breaks = doc.elements.filter((el) => el.type === 'pageBreak').length
-    return { elements: doc.elements.length, pages: breaks + 1 }
-  }, [doc])
+    const elements = doc?.elements.length ?? 0
+    return { elements, pages: preview.numPages || 1 }
+  }, [doc, preview.numPages])
 
   const booting = status !== 'ready'
   const pdfName = activeScript
@@ -108,7 +129,7 @@ export default function App() {
           <span className="hidden font-mono text-xs text-muted-foreground tabular-nums sm:inline">
             {stats.elements} elementos · ~{stats.pages} pág.
           </span>
-          <ExportButton fountain={fountain} text={text} filename={pdfName} />
+          <ExportButton bytes={preview.bytes} filename={pdfName} />
           <ThemeToggle />
         </span>
       </header>
@@ -159,7 +180,11 @@ export default function App() {
               </div>
             ) : (
               <div className="min-h-0 flex-1">
-                <Preview doc={doc} />
+                <PdfPreview
+                  preview={preview}
+                  paused={previewPaused}
+                  onPausedChange={setPreviewPaused}
+                />
               </div>
             )}
           </main>
@@ -187,7 +212,11 @@ export default function App() {
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={30}>
                   <div className="h-full pl-2">
-                    <Preview doc={doc} />
+                    <PdfPreview
+                      preview={preview}
+                      paused={previewPaused}
+                      onPausedChange={setPreviewPaused}
+                    />
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>

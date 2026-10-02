@@ -9,7 +9,7 @@ import type { Document, Warning } from '../vendor/fountain.mjs'
 /** Estado del boot del runtime WASM (`loadFountain()` en `src/fountain.ts`). */
 export type BootStatus = 'booting' | 'ready' | 'error'
 
-/** Resultado del parse reactivo que consume `<Preview>`. */
+/** Resultado del parse reactivo que consume el header y los warnings. */
 export interface ParseResult {
   status: BootStatus
   /** Documento parseado del texto actual; `null` antes del primer parse. */

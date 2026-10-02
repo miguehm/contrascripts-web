@@ -1,32 +1,30 @@
-// src/components/ExportButton.tsx — exportar PDF (§5).
+// src/components/ExportButton.tsx — exportar PDF.
 //
-// `renderPDF(text)` → `Uint8Array` → Blob `application/pdf` → descarga.
-// Estado `busy` durante la renderización y errores por `sonner`.
+// Descarga los últimos bytes generados por el worker del preview (caché del
+// hook `usePdfPreview`): preview y descarga son el mismo PDF, sin un segundo
+// render. Si aún no hay bytes (primer render en curso), el botón espera.
 
 import { useState } from 'react'
 import { toast } from 'sonner'
-import type { Fountain } from '@/vendor/fountain.mjs'
 import { Button } from '@/components/ui/button'
 
 interface ExportButtonProps {
-  fountain: Fountain | null
-  text: string
+  bytes: Uint8Array | null
   filename?: string
 }
 
 export function ExportButton({
-  fountain,
-  text,
+  bytes,
   filename = 'guion.pdf',
 }: ExportButtonProps) {
   const [busy, setBusy] = useState(false)
 
   const handleExport = async () => {
-    if (!fountain || busy) return
+    if (!bytes || busy) return
     setBusy(true)
     try {
-      const bytes = await fountain.renderPDF(text)
-      const blob = new Blob([bytes as unknown as BlobPart], {
+      // Copia: el caché del hook sigue vivo para el siguiente preview.
+      const blob = new Blob([bytes.slice().buffer as ArrayBuffer], {
         type: 'application/pdf',
       })
       const url = URL.createObjectURL(blob)
@@ -50,7 +48,7 @@ export function ExportButton({
   return (
     <Button
       onClick={handleExport}
-      disabled={!fountain || busy}
+      disabled={!bytes || busy}
       aria-label="Exportar PDF"
       className="h-8"
     >
