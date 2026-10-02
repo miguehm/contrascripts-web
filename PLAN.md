@@ -564,6 +564,46 @@ usan en §9 y en la verificación de cada fase.
 - Una sola instancia por documento (sin `dispose()`); `Symbol.for` lo
   garantiza.
 
+## Verificación §9 — ejecutada 2026-10-02 (resultado: PASS)
+
+Entorno: `npm run dev` (:5173) + `vite preview` (:4173 tras `npm run build`),
+Chrome headless 153 por CDP. En Brave visible con la ventana ocluida el
+`requestAnimationFrame` no dispara nunca (pestaña "visible" pero sin frames
+del compositor) y el preview queda en "Cargando motor…": artefacto del
+entorno, no bug — con rAF activo todo renderiza.
+
+- 9.0 `npm run sync` OK (2 wasm + `wasm_exec.js` + `manifest.json`, tamaños
+  según §5); `public/fountain` sin `fountain.mjs`; `src/vendor/*.mjs/.d.mts`.
+- 9.1 dev: boot `LISTO`, `./fountain/fountain-parser.wasm` 200
+  `application/wasm`, wrapper desde el bundle (nunca `public/`), preload
+  `fountain-pdf.wasm` en idle verificado en red.
+- 9.2 build+preview: idéntico a dev (`boots===1`, 18 elementos, 2 pág.,
+  rutas relativas).
+- 9.3 `Brick & Steel.pdf` 37 KB `%PDF-1.3`; con `fountain-pdf.wasm`
+  bloqueado la UI no rompe (reintentos, sin crash).
+- 9.4 `tsc --noEmit` + `build` limpios. 9.5 `__fountainBoots === 1`.
+- 9.6 debounce guarda (`guion.scripts.v1`), reload persiste, JSON corrupto
+  → boot sano con seed. 9.7 toggle persiste (`guion.theme.v1`) tras reload.
+- 9.8 0 botones-icono sin `aria-label`, `tablist` + `aria-live="polite"` OK,
+  `--ring` ámbar; trap de foco = default Radix (sin override propio).
+- 9.9 `lint` + `format:check` limpios (se ignoran `.agents/`,
+  `test-results/`, `playwright-report/` por ser artefactos externos).
+
+## Calidad §10 — implementada 2026-10-02
+
+- Unit (36 tests): `store/` + `lib/scripts` (existentes) + nuevo
+  `src/features/preview/Preview.test.tsx` (fixture `Document`: portada,
+  slugline, inline/fallback, dual, note, boneyard omitido, `-- Page 2 --`).
+  `vite.config.ts` excluye `tests/**` de vitest (los e2e son de playwright).
+- E2E (`tests/e2e.spec.ts`, `test:e2e`): boot único, edición→preview,
+  descarga PDF, persistencia tras reload — 4/4 en Chromium headless.
+  Ojo: usar `textarea:visible` / `article` (el layout móvil oculto rompe
+  `.first()` en viewport desktop).
+- CI (`.github/workflows/ci.yml`): clona el parser
+  (`PARSER_REPO`/`PARSER_REF`) al path hermano que `sync` espera, Go 1.24 +
+  Node 20 con caché, `ci → sync → lint → typecheck → test → playwright
+  install → test:e2e → build`.
+
 ## Fase 2 — Post-MVP (opcional): empaquetado nativo (Tauri + Capacitor)
 
 No forma parte del flujo MVP; se aborda una vez verificado §9.
