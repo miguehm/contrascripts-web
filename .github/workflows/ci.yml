@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Repo del parser Go (wasm). `npm run sync` corre
+  # `make -C ../2026-08-31-fountain-parser package`, que exige `dist/`
+  # (target `package: dist`), así que el CI clona el parser y el propio
+  # sync construye. Cambiar aquí si el parser se muda de forge.
+  PARSER_REPO: https://git.miguehm.com/miguehm/contrascripts.git
+  PARSER_REF: master
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Clonar parser (hermano del sync)
+        run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
+        working-directory: ${{ github.workspace }}/..
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: ../2026-08-31-fountain-parser/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+        working-directory: app
+
+      - run: npm run sync
+        working-directory: app
+
+      - run: npm run lint
+        working-directory: app
+
+      - run: npm run typecheck
+        working-directory: app
+
+      - run: npm run test
+        working-directory: app
+
+      - name: Instalar Chromium para e2e
+        run: npx playwright install --with-deps chromium
+        working-directory: app
+
+      - run: npx playwright test
+        working-directory: app
+
+      - run: npm run build
+        working-directory: app
