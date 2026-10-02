@@ -6,7 +6,7 @@ import prettier from 'eslint-config-prettier'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig(
-  { ignores: ['dist', 'src/vendor'] },
+  { ignores: ['dist', 'src/vendor', 'public/fountain'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,
@@ -16,5 +16,13 @@ export default defineConfig(
   {
     files: ['src/components/ui/**'],
     rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  // scripts/sync.mjs corre en Node (fase §3); sin el paquete `globals`,
+  // declarar las dos globales que usa.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
   },
 )
