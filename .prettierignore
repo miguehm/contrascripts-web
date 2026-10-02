@@ -1,7 +1,13 @@
 # Artefactos y generado: nunca formatear
 dist/
+test-results/
+playwright-report/
 src/vendor/
 src/components/ui/
+
+# Skills/agentes externos: artefactos instalados, no fuente propia.
+.agents/
+skills-lock.json
 
 # Docs de spec/diseño: su formato (alineación de tokens, samples) es
 # intencional y prettier lo degradaría; se revisan a mano.
