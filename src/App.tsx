@@ -159,7 +159,12 @@ export default function App() {
   // de tab móvil —que desmonta el preview— no lo reinicie; persiste vía store.
   const zoom = usePreviewZoom()
   const { collapsed, toggle } = useSidebarCollapsed()
-  const { open: previewOpen, toggle: togglePreview } = usePreviewOpen()
+  const {
+    open: previewOpen,
+    toggle: togglePreview,
+    expanded: previewExpanded,
+    toggleExpanded,
+  } = usePreviewOpen()
   // REVIEW.md 4: avisos como notas al pie — tira dockada + panel flotante.
   // `open` persiste en `guion.warnings.v1`; ante avisos nuevos solo se
   // ilumina el badge (sin auto-apertura: taparía manuscrito).
@@ -197,10 +202,18 @@ export default function App() {
         e.preventDefault()
         togglePreview()
       }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === 'f'
+      ) {
+        e.preventDefault()
+        toggleExpanded()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggle, togglePreview])
+  }, [toggle, togglePreview, toggleExpanded])
   const previewVisible = isDesktop ? previewOpen : tab === 'preview'
   const preview = usePdfPreview(text, {
     paused: previewPaused,
@@ -353,6 +366,8 @@ export default function App() {
                   paused={previewPaused}
                   onPausedChange={setPreviewPaused}
                   zoom={zoom}
+                  expanded={previewExpanded}
+                  onToggleExpand={toggleExpanded}
                 />
               </div>
             )}
@@ -369,7 +384,23 @@ export default function App() {
               <ScriptsSidebar collapsed={collapsed} />
             </aside>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              {previewOpen ? (
+              {previewOpen && previewExpanded ? (
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+                  <div
+                    id="preview-pane"
+                    className="mx-auto flex h-full min-h-0 w-full max-w-[110ch] flex-col overflow-hidden"
+                  >
+                    <PdfPreview
+                      preview={preview}
+                      paused={previewPaused}
+                      onPausedChange={setPreviewPaused}
+                      zoom={zoom}
+                      expanded={previewExpanded}
+                      onToggleExpand={toggleExpanded}
+                    />
+                  </div>
+                </div>
+              ) : previewOpen ? (
                 <ResizablePanelGroup
                   orientation="horizontal"
                   className="min-h-0 overflow-hidden p-4"
@@ -405,6 +436,8 @@ export default function App() {
                         paused={previewPaused}
                         onPausedChange={setPreviewPaused}
                         zoom={zoom}
+                        expanded={previewExpanded}
+                        onToggleExpand={toggleExpanded}
                       />
                     </div>
                   </ResizablePanel>

@@ -30,6 +30,7 @@ import {
   useState,
 } from 'react'
 import { Button } from '@/components/ui/button'
+import { Maximize2, Minimize2 } from 'lucide-react'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
 import {
   clampZoom,
@@ -46,6 +47,9 @@ interface PdfPreviewProps {
   paused: boolean
   onPausedChange: (paused: boolean) => void
   zoom: PreviewZoom
+  /** Vista en grande (REVIEW.md punto 2): el panel abarca todo el ancho. */
+  expanded?: boolean
+  onToggleExpand?: () => void
 }
 
 interface PinchState {
@@ -110,6 +114,8 @@ export function PdfPreview({
   paused,
   onPausedChange,
   zoom,
+  expanded = false,
+  onToggleExpand,
 }: PdfPreviewProps) {
   const { status, pdf, numPages, error, renderNow } = preview
   const { scale, canZoomIn, canZoomOut } = zoom
@@ -416,6 +422,32 @@ export function PdfPreview({
           >
             {paused ? 'Reanudar' : 'Pausar'}
           </Button>
+          {onToggleExpand ? (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-expanded={expanded}
+              aria-controls="preview-pane"
+              aria-label={
+                expanded
+                  ? 'Salir de vista ampliada'
+                  : 'Ver vista previa en grande'
+              }
+              title={
+                expanded
+                  ? 'Volver a vista dividida (Ctrl+Mayús+F)'
+                  : 'Ver en grande (Ctrl+Mayús+F)'
+              }
+              onClick={onToggleExpand}
+              className="hidden md:inline-flex"
+            >
+              {expanded ? (
+                <Minimize2 aria-hidden="true" />
+              ) : (
+                <Maximize2 aria-hidden="true" />
+              )}
+            </Button>
+          ) : null}
         </span>
       </div>
 
