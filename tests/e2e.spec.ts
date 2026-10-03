@@ -181,6 +181,49 @@ test('ambos plegados: el editor hace scroll interno y el header queda fijo', asy
   expect(innerScroll.scrollHeight).toBeGreaterThan(innerScroll.clientHeight)
 })
 
+test('vista en grande: amplía a todo el ancho, persiste y sale', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  // Amplía desde la cabecera del preview (solo desktop).
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'Salir de vista ampliada' }),
+  ).toBeVisible()
+  // El editor se oculta; el documento sigue visible a todo el ancho.
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await expect(
+    page.getByRole('document', { name: /Guion en PDF/ }),
+  ).toBeVisible()
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  // Persiste tras recarga (clave guion.preview.v1 con expanded).
+  await page.reload()
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(
+    page.getByRole('button', { name: 'Salir de vista ampliada' }),
+  ).toBeVisible()
+  // Salir devuelve el split editor + preview.
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Ver vista previa en grande' }),
+  ).toBeVisible()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+})
+
 test('persistencia tras recarga', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({

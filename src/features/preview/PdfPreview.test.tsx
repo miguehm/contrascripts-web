@@ -422,3 +422,60 @@ describe('PdfPreview', () => {
     await flush()
   })
 })
+
+describe('vista en grande (REVIEW.md punto 2)', () => {
+  it('sin onToggleExpand no hay botón de ampliar', () => {
+    render(<Harness preview={makePreview()} />)
+    expect(
+      screen.queryByRole('button', { name: 'Ver vista previa en grande' }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Salir de vista ampliada' }),
+    ).toBeNull()
+  })
+
+  it('el botón alterna etiqueta/aria-expanded y llama al toggle', () => {
+    const onToggleExpand = vi.fn()
+    const zoom = {
+      scale: 1,
+      percent: 100,
+      canZoomIn: true,
+      canZoomOut: true,
+      zoomIn: vi.fn(),
+      zoomOut: vi.fn(),
+      setScale: vi.fn(),
+      setScaleLive: vi.fn(),
+      commit: vi.fn(),
+      reset: vi.fn(),
+    }
+    const { rerender } = render(
+      <PdfPreview
+        preview={makePreview()}
+        paused={false}
+        onPausedChange={() => {}}
+        zoom={zoom}
+        expanded={false}
+        onToggleExpand={onToggleExpand}
+      />,
+    )
+    const expand = screen.getByRole('button', {
+      name: 'Ver vista previa en grande',
+    })
+    expect(expand.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(expand)
+    expect(onToggleExpand).toHaveBeenCalledTimes(1)
+    rerender(
+      <PdfPreview
+        preview={makePreview()}
+        paused={false}
+        onPausedChange={() => {}}
+        zoom={zoom}
+        expanded={true}
+        onToggleExpand={onToggleExpand}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: 'Salir de vista ampliada' }),
+    ).toBeDefined()
+  })
+})
