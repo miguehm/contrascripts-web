@@ -7,6 +7,7 @@ import {
   ZOOM_MAX,
   ZOOM_MIN,
   clampZoom,
+  dragZoomFactor,
   pinchScale,
   snapZoom,
   usePreviewZoom,
@@ -107,8 +108,8 @@ describe('usePreviewZoom', () => {
 describe('pinchScale', () => {
   it('aplica la ganancia sobre la razón de distancias', () => {
     expect(pinchScale(1, 100, 150)).toBeCloseTo(Math.pow(1.5, PINCH_GAIN))
-    // Un gesto amplio de verdad rinde: 100→150px ≈ ×1.76.
-    expect(pinchScale(1, 100, 150)).toBeGreaterThan(1.7)
+    // Un gesto amplio de verdad rinde en uno solo: 100→150px ≈ ×2.25.
+    expect(pinchScale(1, 100, 150)).toBeCloseTo(2.25)
     expect(pinchScale(1, 100, 100)).toBe(1)
   })
 
@@ -134,5 +135,15 @@ describe('wheelFactor', () => {
   it('modo líneas (Firefox) se normaliza y el reposo es neutro', () => {
     expect(wheelFactor(-3, 1)).toBeGreaterThan(1)
     expect(wheelFactor(0, 0)).toBe(1)
+  })
+})
+
+describe('dragZoomFactor', () => {
+  it('subir amplía y bajar reduce, con gran recorrido por arrastre', () => {
+    // Subir 150px ≈ ×2.1: de 100% a 200% en un solo arrastre.
+    expect(dragZoomFactor(-150)).toBeCloseTo(Math.exp(0.75))
+    expect(dragZoomFactor(-150)).toBeGreaterThan(2)
+    expect(dragZoomFactor(150)).toBeLessThan(0.5)
+    expect(dragZoomFactor(0)).toBe(1)
   })
 })

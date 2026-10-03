@@ -253,7 +253,7 @@ describe('PdfPreview', () => {
     await flush()
   })
 
-  it('el pinch amplificado rinde en un solo gesto y persiste al soltar', async () => {
+  it('el pinch amplificado rinde en un solo gesto y confirma al soltar', async () => {
     const pdf = makePdf(1)
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
@@ -278,11 +278,53 @@ describe('PdfPreview', () => {
       clientX: 150,
       clientY: 0,
     })
-    // 1.5^1.4 ≈ ×1.76 de una sola apertura (antes 1:1 + snap lo revertía).
-    expect(screen.getByText('176 %')).toBeDefined()
+    // 1.5^2 = ×2.25 en una sola apertura, por transform (sin tocar layout).
+    expect(screen.getByText('225 %')).toBeDefined()
+    const doc = screen.getByRole('document')
+    expect(doc.style.transform).toContain('scale(2.25)')
     fireEvent.pointerUp(scroller, { pointerId: 1 })
     fireEvent.pointerUp(scroller, { pointerId: 2 })
     expect(scroller.style.touchAction).toBe('pan-x pan-y')
+    // Al soltar se confirma la escala real (el transform se retira).
+    expect(screen.getByText('225 %')).toBeDefined()
+    expect(screen.getByRole('document').style.transform).toBe('')
+    await flush()
+  })
+
+  it('doble-tap-arrastrar amplía con un dedo y no lo revierte el dblclick', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    const scroller = screen.getByTestId('preview-pages')
+    // Primer tap.
+    fireEvent.pointerDown(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 50,
+      clientY: 100,
+    })
+    fireEvent.pointerUp(scroller, { pointerId: 1 })
+    // Segundo toque + arrastre hacia arriba con el dedo apoyado.
+    fireEvent.pointerDown(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 50,
+      clientY: 100,
+    })
+    expect(scroller.style.touchAction).toBe('none')
+    fireEvent.pointerMove(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 50,
+      clientY: 0,
+    })
+    // Subir 100px ≈ ×1.65.
+    expect(screen.getByText('165 %')).toBeDefined()
+    fireEvent.pointerUp(scroller, { pointerId: 1 })
+    expect(screen.getByText('165 %')).toBeDefined()
+    // El dblclick sintético del navegador tras el arrastre se ignora.
+    fireEvent.doubleClick(scroller)
+    expect(screen.getByText('165 %')).toBeDefined()
     await flush()
   })
 })

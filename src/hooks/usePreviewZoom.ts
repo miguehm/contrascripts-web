@@ -15,11 +15,16 @@ export const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
 export const ZOOM_MIN = ZOOM_STEPS[0]
 export const ZOOM_MAX = ZOOM_STEPS[ZOOM_STEPS.length - 1]
 
-/** Ganancia del pinch: cada gesto rinde ~×1.4 frente al 1:1 físico. */
-export const PINCH_GAIN = 1.4
+/** Ganancia del pinch: cada gesto rinde el cuadrado frente al 1:1 físico
+ * (abrir dedos de 100→150px da ×2.25 en un solo gesto). */
+export const PINCH_GAIN = 2.0
 
 /** Ganancia de la rueda con Ctrl/Cmd (pellizco del trackpad). */
 export const WHEEL_GAIN = 0.004
+
+/** Ganancia del arrastre vertical tras doble-tap (un dedo): subir 150px
+ * multiplica por ~×2.1. */
+export const DRAG_GAIN = 0.005
 
 export function clampZoom(scale: number): number {
   if (!Number.isFinite(scale)) return DEFAULT_ZOOM
@@ -69,6 +74,13 @@ export function wheelFactor(deltaY: number, deltaMode: number): number {
   if (!Number.isFinite(deltaY)) return 1
   const delta = deltaMode === 1 ? deltaY * 33 : deltaY
   return Math.min(1.4, Math.max(0.7, Math.exp(-delta * WHEEL_GAIN)))
+}
+
+/** Factor multiplicativo del arrastre vertical tras doble-tap: `dy` son los
+ * píxeles arrastrados (negativo al subir = ampliar). Función pura. */
+export function dragZoomFactor(dy: number): number {
+  if (!Number.isFinite(dy)) return 1
+  return Math.exp(-dy * DRAG_GAIN)
 }
 
 export interface PreviewZoom {
