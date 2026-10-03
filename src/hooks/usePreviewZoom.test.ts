@@ -58,16 +58,12 @@ describe('usePreviewZoom', () => {
     expect(result.current.scale).toBe(1)
   })
 
-  it('setScaleLive no persiste hasta commit', () => {
+  it('setScaleLive actualiza el estado sin commit separado', () => {
     const { result } = renderHook(() => usePreviewZoom())
     act(() => result.current.setScaleLive(1.22))
     expect(result.current.scale).toBeCloseTo(1.22)
-    // Un remontaje aún ve el valor anterior: el tick no persistió.
-    const { result: before } = renderHook(() => usePreviewZoom())
-    expect(before.current.scale).toBe(1)
     act(() => result.current.commit())
-    const { result: after } = renderHook(() => usePreviewZoom())
-    expect(after.current.scale).toBeCloseTo(1.22)
+    expect(result.current.scale).toBeCloseTo(1.22)
   })
 
   it('el gesto libre conserva valores continuos (sin snap)', () => {
@@ -76,24 +72,21 @@ describe('usePreviewZoom', () => {
       result.current.setScaleLive(1.13)
       result.current.commit()
     })
-    const { result: second } = renderHook(() => usePreviewZoom())
-    expect(second.current.scale).toBeCloseTo(1.13)
+    expect(result.current.scale).toBeCloseTo(1.13)
   })
 
-  it('reset vuelve al 100% y persiste la escala', () => {
+  it('reset vuelve al 100%', () => {
     const { result } = renderHook(() => usePreviewZoom())
     act(() => result.current.zoomIn())
     act(() => result.current.reset())
     expect(result.current.scale).toBe(1)
-    const { result: second } = renderHook(() => usePreviewZoom())
-    expect(second.current.scale).toBe(1)
   })
 
-  it('persiste el zoom entre montajes sin perder collapsed', () => {
+  it('el zoom vive solo en sesión (sin persistencia entre montajes)', () => {
     const { result } = renderHook(() => usePreviewZoom())
     act(() => result.current.setScale(2))
     const { result: second } = renderHook(() => usePreviewZoom())
-    expect(second.current.scale).toBe(2)
+    expect(second.current.scale).toBe(1)
   })
 
   it('respeta los topes', () => {
@@ -136,7 +129,7 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     expect(mobile.current.fitMode).toBe(true)
   })
 
-  it('un zoom manual sale de fit y persiste fitWidth=false', () => {
+  it('un zoom manual sale de fit; no persiste fitWidth', () => {
     const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
     act(() => result.current.setFitScale(0.53))
     expect(result.current.effectiveScale).toBeCloseTo(0.53)
@@ -146,16 +139,16 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     const { result: second } = renderHook(() =>
       usePreviewZoom({ fitDefault: true }),
     )
-    expect(second.current.fitMode).toBe(false)
+    expect(second.current.fitMode).toBe(true)
   })
 
-  it('un gesto (setScaleLive) sale de fit sin arrastrar fitWidth en storage', () => {
+  it('un gesto (setScaleLive) sale de fit', () => {
     const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
     act(() => result.current.setScaleLive(1.22))
     expect(result.current.fitMode).toBe(false)
   })
 
-  it('el botón de ajustar reactiva fit y persiste', () => {
+  it('setFitMode reactiva fit solo en esta sesión', () => {
     const { result } = renderHook(() => usePreviewZoom({ fitDefault: false }))
     act(() => result.current.setScale(2))
     act(() => result.current.setFitMode(true))
@@ -163,7 +156,17 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     const { result: second } = renderHook(() =>
       usePreviewZoom({ fitDefault: false }),
     )
-    expect(second.current.fitMode).toBe(true)
+    expect(second.current.fitMode).toBe(false)
+  })
+
+  it('resetForScript reactiva el fit y restablece el zoom al 100%', () => {
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
+    act(() => result.current.setScaleLive(1.5))
+    act(() => result.current.setFitScale(0.5))
+    act(() => result.current.resetForScript())
+    expect(result.current.fitMode).toBe(true)
+    expect(result.current.scale).toBe(1)
+    expect(result.current.fitScale).toBeNull()
   })
 
   it('effectiveScale usa el fit medido mientras fitMode siga activo', () => {

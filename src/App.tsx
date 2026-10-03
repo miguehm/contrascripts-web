@@ -174,6 +174,17 @@ export default function App() {
   // REVIEW.md 1: fit al ancho por defecto solo en móvil (fitDefault); en
   // desktop siempre entra manual.
   const zoom = usePreviewZoom({ fitDefault: !isDesktop })
+  // Al abrir otro guion (nuevo o existente) el fit inicial vuelve a
+  // aplicarse; el cambio de tab editor↔preview con el mismo guion conserva
+  // el zoom vigente.
+  const activeScriptId = activeScript?.id ?? null
+  const lastScriptIdRef = useRef<string | null>(activeScriptId)
+  useEffect(() => {
+    if (lastScriptIdRef.current !== activeScriptId) {
+      lastScriptIdRef.current = activeScriptId
+      zoom.resetForScript()
+    }
+  }, [activeScriptId, zoom])
   const { collapsed, toggle } = useSidebarCollapsed()
   const {
     open: previewOpen,

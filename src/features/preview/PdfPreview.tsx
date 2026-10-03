@@ -226,7 +226,6 @@ export function PdfPreview({
     ro.observe(el)
     return () => {
       ro.disconnect()
-      setFitScale(null)
     }
   }, [fitEnabled, setFitScale])
 
@@ -451,26 +450,26 @@ export function PdfPreview({
           >
             −
           </Button>
-          {/* Punto 1 (móvil): sin botón "Ajustar"; el número de porcentaje
-              hace esa acción. En desktop sigue reseteando al 100 %. */}
+          {/* Punto 1 (móvil): el número de porcentaje es solo indicador;
+              el fit se aplica al abrir el documento. En desktop sigue
+              reseteando al 100 %. */}
           <Button
             size="xs"
             variant="ghost"
             aria-label={
               fitEnabled
                 ? fitMode
-                  ? `Zoom ${displayPercent} por ciento, ajustado al ancho. Activar para reajustar al ancho`
-                  : `Zoom ${displayPercent} por ciento. Activar para ajustar al ancho del dispositivo`
+                  ? `Zoom ${displayPercent} por ciento, ajustado al ancho`
+                  : `Zoom ${displayPercent} por ciento`
                 : `Zoom ${displayPercent} por ciento. Activar para restablecer al 100 por ciento`
             }
             title={
               fitEnabled
-                ? 'Ajustar al ancho del dispositivo'
+                ? `Zoom ${displayPercent} %`
                 : 'Restablecer zoom al 100 % (o doble-clic en la página)'
             }
             onClick={() => {
-              if (fitEnabled) setFitMode(true)
-              else zoom.reset()
+              if (!fitEnabled) zoom.reset()
             }}
             className="min-w-10 font-mono text-[10px] text-muted-foreground tabular-nums"
             aria-live="polite"

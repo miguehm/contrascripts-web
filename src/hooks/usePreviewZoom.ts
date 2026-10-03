@@ -3,25 +3,18 @@
 // Botones por escalones (`ZOOM_STEPS`); gestos (pinch / Ctrl+rueda) libres y
 // continuos en `[ZOOM_MIN, ZOOM_MAX]`, sin `snap` al soltar: el gesto deja la
 // escala donde la deja el usuario. La escala vive en `App` (vía este hook)
-// para que el cambio de tab móvil no la reinicie, y persiste en
-// `store/uiStorage.ts` (AGENTS.md nº2), pero solo al asentar el gesto
-// (`commit`), nunca por tick: un write a `localStorage` por `pointermove`
-// mete jank en el gesto.
+// para que el cambio de tab móvil no la reinicie. No persiste en
+// localStorage: el zoom vive solo en sesión (AGENTS.md nº2).
 //
 // Punto 1 (solo móvil): modo `fit` que ajusta la hoja al ancho del
 // contenedor. `fitScale` lo mide `PdfPreview` con `ResizeObserver` (no se
-// persiste: depende del viewport); `fitMode` sí persiste (`fitWidth`).
+// persiste: depende del viewport); `fitMode` tampoco persiste: el ajuste
+// se aplica una vez al abrir el documento y el zoom queda en sesión.
 // La escala mostrada es `effectiveScale = fitMode && fitScale ? fitScale
-// : scale`. Cualquier zoom manual sale de fit y persiste `fitWidth=false`.
+// : scale`. Cualquier zoom manual sale de fit.
 
 import { useCallback, useRef, useState } from 'react'
-import {
-  DEFAULT_ZOOM,
-  loadFitWidth,
-  loadZoom,
-  saveFitWidth,
-  saveZoom,
-} from '@/store/uiStorage'
+import { DEFAULT_ZOOM } from '@/store/uiStorage'
 
 export const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
 export const ZOOM_MIN = ZOOM_STEPS[0]
@@ -168,6 +161,8 @@ export interface PreviewZoom {
   /** Persiste la escala vigente: llamar al asentar el gesto. */
   commit: () => void
   reset: () => void
+  /** Restablece zoom y fit al cambiar de documento (nuevo/existente). */
+  resetForScript: () => void
   /** Modo ajuste al ancho (punto 1, solo móvil). */
   fitMode: boolean
   /** Escala medida por `PdfPreview` (null = aún sin medir). No persiste. */
@@ -184,23 +179,21 @@ export interface PreviewZoom {
 export function usePreviewZoom(options?: {
   fitDefault?: boolean
 }): PreviewZoom {
-  const [scale, setScaleState] = useState<number>(() => clampZoom(loadZoom()))
+  const [scale, setScaleState] = useState<number>(() => DEFAULT_ZOOM)
   // Espejo síncrono para que `commit` persista lo último aunque el gesto
   // dispare muchos ticks entre renders.
   const scaleRef = useRef(scale)
   // `fitWidth` guardado manda; sin dato, decide el layout (`fitDefault`:
   // true en móvil, false en desktop/tests).
-  const [fitMode, setFitModeState] = useState<boolean>(() => {
-    const saved = loadFitWidth()
-    return saved ?? options?.fitDefault ?? false
-  })
+  const [fitMode, setFitModeState] = useState<boolean>(
+    () => options?.fitDefault ?? false,
+  )
   const fitModeRef = useRef(fitMode)
   const [fitScale, setFitScaleState] = useState<number | null>(null)
 
   const setFitMode = useCallback((fit: boolean) => {
     fitModeRef.current = fit
     setFitModeState(fit)
-    saveFitWidth(fit)
   }, [])
 
   const setFitScale = useCallback((next: number | null) => {
@@ -212,7 +205,6 @@ export function usePreviewZoom(options?: {
     if (fitModeRef.current) {
       fitModeRef.current = false
       setFitModeState(false)
-      saveFitWidth(false)
     }
   }, [])
 
@@ -231,15 +223,12 @@ export function usePreviewZoom(options?: {
     (next: number) => {
       exitFit()
       setScaleLive(next)
-      saveZoom(clampZoom(next))
-      saveFitWidth(false)
     },
     [exitFit, setScaleLive],
   )
 
   const commit = useCallback(() => {
-    saveZoom(scaleRef.current)
-    if (!fitModeRef.current) saveFitWidth(false)
+    // Sin persistencia: el estado ya quedó fijado por los ticks del gesto.
   }, [])
 
   const zoomIn = useCallback(() => {
@@ -250,8 +239,6 @@ export function usePreviewZoom(options?: {
     exitFit()
     scaleRef.current = next
     setScaleState(next)
-    saveZoom(next)
-    saveFitWidth(false)
   }, [exitFit, fitScale])
 
   const zoomOut = useCallback(() => {
@@ -261,17 +248,24 @@ export function usePreviewZoom(options?: {
     exitFit()
     scaleRef.current = next
     setScaleState(next)
-    saveZoom(next)
-    saveFitWidth(false)
   }, [exitFit, fitScale])
 
   const reset = useCallback(() => {
     exitFit()
     scaleRef.current = DEFAULT_ZOOM
     setScaleState(DEFAULT_ZOOM)
-    saveZoom(DEFAULT_ZOOM)
-    saveFitWidth(false)
   }, [exitFit])
+
+  // Documento nuevo/existente: el fit inicial vuelve a aplicarse (móvil);
+  // el cambio de tab del preview con el mismo documento NO pasa por aquí.
+  const resetForScript = useCallback(() => {
+    const fit = options?.fitDefault ?? false
+    fitModeRef.current = fit
+    setFitModeState(fit)
+    setFitScaleState(null)
+    scaleRef.current = DEFAULT_ZOOM
+    setScaleState(DEFAULT_ZOOM)
+  }, [options?.fitDefault])
 
   const effectiveScale = fitMode && fitScale !== null ? fitScale : scale
 
@@ -286,6 +280,7 @@ export function usePreviewZoom(options?: {
     setScaleLive,
     commit,
     reset,
+    resetForScript,
     fitMode,
     fitScale,
     effectiveScale,
