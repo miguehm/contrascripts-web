@@ -39,7 +39,6 @@ export function WarningsTrigger({
     <button
       ref={ref}
       type="button"
-      data-warnings-trigger
       onClick={() => onOpenChange(!open)}
       aria-expanded={open}
       aria-controls={panelId}
@@ -108,13 +107,11 @@ export function WarningsPanel({
       }
     }
     const onPointer = (e: PointerEvent) => {
-      const target = e.target as HTMLElement
-      // Móvil y desktop coexisten montados con distinto `panelId`: se ignora
-      // el clic en CUALQUIER trigger (si no, el panel de la otra columna
-      // cierra en `pointerdown` y el `click` posterior reabre con `open`
-      // obsoleto: el panel no se llega a cerrar nunca).
-      if (target.closest('[data-warnings-trigger]')) return
-      if (panelRef.current && !panelRef.current.contains(target)) {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(e.target as Node) &&
+        !(e.target as HTMLElement).closest(`[aria-controls="${panelId}"]`)
+      ) {
         onClose()
       }
     }
