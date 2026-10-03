@@ -174,10 +174,20 @@ export default function App() {
             <PanelLeftClose aria-hidden="true" />
           )}
         </Button>
-        <h1 className="hidden text-[0.8125rem] font-medium md:inline">Guion</h1>
-        <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium md:hidden">
-          {activeScript?.title ?? 'Sin guiones'}
-        </span>
+        <h1
+          className="flex min-w-0 flex-1 items-baseline gap-2 md:max-w-[32ch] md:flex-none"
+          title={activeScript?.title ?? 'Sin guiones'}
+        >
+          <span
+            aria-hidden="true"
+            className="hidden shrink-0 text-[0.6875rem] font-semibold tracking-[0.06em] text-muted-foreground uppercase md:inline"
+          >
+            Guion
+          </span>
+          <span className="truncate text-[0.8125rem] font-medium">
+            {activeScript?.title ?? 'Sin guiones'}
+          </span>
+        </h1>
         <StatusBadge status={status} onRetry={retry} />
         <span className="ml-auto flex items-center gap-3">
           <span className="hidden font-mono text-xs text-muted-foreground tabular-nums sm:inline">
