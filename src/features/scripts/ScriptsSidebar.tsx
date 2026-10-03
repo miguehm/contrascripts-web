@@ -28,6 +28,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useScripts } from '@/hooks/useScripts'
 import type { Script } from '@/types/Script'
+import { AboutDialog } from './AboutDialog'
 import { ImportButton } from './ImportButton'
 import { exportScript } from './scriptFiles'
 
@@ -105,6 +106,7 @@ export function ScriptsSidebar({
           <Plus aria-hidden="true" />
         </Button>
         <ImportButton variant="ghost" size="icon-sm" />
+        <AboutDialog variant="ghost" size="icon-sm" className="mt-auto" />
       </section>
     )
   }
@@ -198,7 +200,7 @@ export function ScriptsSidebar({
       )}
 
       <Separator />
-      <ImportButton variant="outline" size="sm" className="w-full" />
+      <AboutDialog variant="outline" size="sm" className="w-full" />
 
       {/* Renombrar */}
       <Dialog
