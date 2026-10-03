@@ -285,9 +285,61 @@ describe('PdfPreview', () => {
     fireEvent.pointerUp(scroller, { pointerId: 1 })
     fireEvent.pointerUp(scroller, { pointerId: 2 })
     expect(scroller.style.touchAction).toBe('pan-x pan-y')
-    // Al soltar se confirma la escala real (el transform se retira).
+    // Al soltar se confirma la escala real (el transform se retira) y el
+    // ancla queda clavada: (0 + 75×2.25 − 75) = 93.75, sin salto.
     expect(screen.getByText('225 %')).toBeDefined()
     expect(screen.getByRole('document').style.transform).toBe('')
+    expect(scroller.scrollLeft).toBeCloseTo(93.75)
+    await flush()
+  })
+
+  it('el origen sigue a los dedos y el commit no salta', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    const scroller = screen.getByTestId('preview-pages')
+    fireEvent.pointerDown(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 0,
+      clientY: 0,
+    })
+    fireEvent.pointerDown(scroller, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 0,
+    })
+    fireEvent.pointerMove(scroller, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 150,
+      clientY: 0,
+    })
+    const doc = screen.getByRole('document')
+    expect(doc.style.transformOrigin).toBe('75px 0px')
+    // El primer dedo también se desliza: el origen lo sigue (ya no es 75).
+    fireEvent.pointerMove(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 0,
+    })
+    // Punto medio 95 con k=2.25 previo: 75 + (95−75)/2.25 ≈ 83.89.
+    expect(screen.getByRole('document').style.transformOrigin).toContain(
+      '83.88',
+    )
+    expect(screen.getByText('121 %')).toBeDefined()
+    // Al soltar con el dedo en (40,0) el ancla queda clavada sin salto.
+    fireEvent.pointerUp(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 0,
+    })
+    fireEvent.pointerUp(scroller, { pointerId: 2 })
+    expect(screen.getByText('121 %')).toBeDefined()
+    expect(scroller.scrollLeft).toBeCloseTo(6.51, 1)
     await flush()
   })
 
@@ -322,6 +374,8 @@ describe('PdfPreview', () => {
     expect(screen.getByText('165 %')).toBeDefined()
     fireEvent.pointerUp(scroller, { pointerId: 1 })
     expect(screen.getByText('165 %')).toBeDefined()
+    // Ancla clavada al confirmar: 50×e^0.5 − 50 ≈ 32.44.
+    expect(scroller.scrollLeft).toBeCloseTo(32.44, 1)
     // El dblclick sintético del navegador tras el arrastre se ignora.
     fireEvent.doubleClick(scroller)
     expect(screen.getByText('165 %')).toBeDefined()

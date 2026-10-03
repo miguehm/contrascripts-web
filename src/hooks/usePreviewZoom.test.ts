@@ -7,8 +7,10 @@ import {
   ZOOM_MAX,
   ZOOM_MIN,
   clampZoom,
+  contentPointUnder,
   dragZoomFactor,
   pinchScale,
+  scrollForAnchor,
   snapZoom,
   usePreviewZoom,
   wheelFactor,
@@ -145,5 +147,34 @@ describe('dragZoomFactor', () => {
     expect(dragZoomFactor(-150)).toBeGreaterThan(2)
     expect(dragZoomFactor(150)).toBeLessThan(0.5)
     expect(dragZoomFactor(0)).toBe(1)
+  })
+})
+
+describe('anclaje del gesto (contentPointUnder/scrollForAnchor)', () => {
+  it('sin transform el punto es viewport + scroll − offset', () => {
+    expect(contentPointUnder(75, 0, 0, 50, 1)).toBe(75)
+    expect(contentPointUnder(50, 20, 10, 50, 1)).toBe(60)
+  })
+
+  it('con transform invierte el mapeo visual', () => {
+    // Origen 50, ×2: el punto 100 se ve en 50 + (100−50)×2 = 150.
+    expect(contentPointUnder(150, 0, 0, 50, 2)).toBe(100)
+  })
+
+  it('entradas inválidas devuelven el origen', () => {
+    expect(contentPointUnder(150, 0, 0, 50, 0)).toBe(50)
+    expect(contentPointUnder(150, 0, 0, 50, NaN)).toBe(50)
+  })
+
+  it('scrollForAnchor deja el ancla clavada tras el salto de escala', () => {
+    // Ancla 100 (layout base 1) vista en 100; salto a ×2 → contenido en 200,
+    // scroll 100 para que siga viéndose en 100.
+    expect(scrollForAnchor(0, 100, 1, 2, 100)).toBe(100)
+    // Ida y vuelta: volver a ×1 restaura el scroll original.
+    const gone = scrollForAnchor(0, 100, 1, 2, 100)
+    expect(gone).toBe(100)
+    // En layout ×2 el ancla vive en 200 y se ve en 100; al volver a ×1
+    // manteniéndola en 100, el scroll vuelve a 0.
+    expect(scrollForAnchor(0, 200, 2, 1, 100)).toBeCloseTo(0)
   })
 })

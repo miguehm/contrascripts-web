@@ -83,6 +83,54 @@ export function dragZoomFactor(dy: number): number {
   return Math.exp(-dy * DRAG_GAIN)
 }
 
+/** Punto local del wrapper (coords de layout sin transformar) que se muestra
+ * ahora mismo en la posición `viewX` del viewport (coords relativas a la
+ * caja de padding del contenedor). `scroll`/`wrapOffset` en px de contenido,
+ * `origin`/`k` el transform vigente. Función pura para testear el anclaje. */
+export function contentPointUnder(
+  viewX: number,
+  scroll: number,
+  wrapOffset: number,
+  origin: number,
+  k: number,
+): number {
+  if (
+    !Number.isFinite(viewX) ||
+    !Number.isFinite(scroll) ||
+    !Number.isFinite(wrapOffset) ||
+    !Number.isFinite(origin) ||
+    !Number.isFinite(k) ||
+    k <= 0
+  ) {
+    return origin
+  }
+  return origin + (viewX + scroll - wrapOffset - origin) / k
+}
+
+/** Scroll absoluto que deja el ancla `anchorLocal` (coords de layout base)
+ * en la posición `viewX` del viewport tras saltar de `baseScale` a
+ * `newScale` con origen de contenido estable (flujo de bloque LTR).
+ * Función pura para testear el commit sin salto. */
+export function scrollForAnchor(
+  wrapOffset: number,
+  anchorLocal: number,
+  baseScale: number,
+  newScale: number,
+  viewX: number,
+): number {
+  if (
+    !Number.isFinite(wrapOffset) ||
+    !Number.isFinite(anchorLocal) ||
+    !Number.isFinite(newScale) ||
+    !Number.isFinite(viewX) ||
+    !Number.isFinite(baseScale) ||
+    baseScale <= 0
+  ) {
+    return wrapOffset + anchorLocal - viewX
+  }
+  return wrapOffset + (anchorLocal * newScale) / baseScale - viewX
+}
+
 export interface PreviewZoom {
   scale: number
   percent: number

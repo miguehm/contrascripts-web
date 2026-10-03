@@ -22,13 +22,21 @@
 //   del trackpad), doble-tap-arrastrar vertical con un dedo (estilo Maps) y
 //   doble-clic para alternar 100% ↔ anterior.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { Button } from '@/components/ui/button'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
 import {
   clampZoom,
+  contentPointUnder,
   dragZoomFactor,
   pinchScale,
+  scrollForAnchor,
   wheelFactor,
 } from '@/hooks/usePreviewZoom'
 import { PdfPage } from './PdfPage'
@@ -51,12 +59,21 @@ interface GestureState {
   base: number
   /** Factor relativo acumulado (display = base * k, sujetado al rango). */
   k: number
-  /** Origen del transform, en px relativos al wrapper (sin transformar). */
+  /** Origen del transform = ancla (punto bajo los dedos, coords de layout). */
   ox: number
   oy: number
   /** Punto de agarre en coords del viewport del contenedor (para el ancla). */
   midX: number
   midY: number
+  /** Ancla en coords de layout base (coincide con el origen vigente). */
+  ax: number
+  ay: number
+  /** Offset del wrapper respecto al origen del contenido (fijo en el gesto). */
+  wx: number
+  wy: number
+  /** Rect del contenedor al empezar el gesto (el layout no cambia en él). */
+  cl: number
+  ct: number
 }
 
 /** Toque rápido candidato a primer tap de un doble-tap. */
@@ -111,10 +128,16 @@ export function PdfPreview({
   const dragEndRef = useRef(0)
   const gestureRef = useRef<GestureState | null>(null)
   const pendingAnchorRef = useRef<{
+    ax: number
+    ay: number
+    wx: number
+    wy: number
     midX: number
     midY: number
-    ratio: number
+    base: number
+    newScale: number
   } | null>(null)
+  const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scaleRef = useRef(scale)
   const prevScaleRef = useRef<number | null>(null)
   // Espejo del hook para el listener nativo de rueda (suscripción única).
@@ -137,50 +160,124 @@ export function PdfPreview({
     zoomRef.current = zoom
   })
 
-  /** Origen del transform + ancla, desde un punto del viewport. */
-  const originAt = (clientX: number, clientY: number) => {
-    const wrap = docWrapRef.current
-    const el = scrollRef.current
-    if (!wrap || !el) return null
-    const wr = wrap.getBoundingClientRect()
-    const cr = el.getBoundingClientRect()
-    return {
-      ox: clientX - wr.left,
-      oy: clientY - wr.top,
-      midX: clientX - cr.left,
-      midY: clientY - cr.top,
-    }
-  }
+  /** Captura el origen del gesto: rects + scroll + punto bajo los dedos.
+   * Válido porque al empezar no hay transform activo (layout = base).
+   * Estable (solo refs): el listener de rueda se suscribe una vez. */
+  const startCapture = useCallback(
+    (clientX: number, clientY: number, base: number): GestureState | null => {
+      const wrap = docWrapRef.current
+      const el = scrollRef.current
+      if (!wrap || !el) return null
+      const wr = wrap.getBoundingClientRect()
+      const cr = el.getBoundingClientRect()
+      const bl = el.clientLeft
+      const bt = el.clientTop
+      const wx = wr.left - cr.left - bl + el.scrollLeft
+      const wy = wr.top - cr.top - bt + el.scrollTop
+      const midX = clientX - cr.left - bl
+      const midY = clientY - cr.top - bt
+      // Con k=1 el ancla es el punto de contenido bajo los dedos.
+      const ax = midX + el.scrollLeft - wx
+      const ay = midY + el.scrollTop - wy
+      return {
+        base,
+        k: 1,
+        ox: ax,
+        oy: ay,
+        midX,
+        midY,
+        ax,
+        ay,
+        wx,
+        wy,
+        cl: cr.left,
+        ct: cr.top,
+      }
+    },
+    [],
+  )
+
+  /** Re-ancla el gesto al punto que está AHORA bajo los dedos con un nuevo
+   * factor `k1`: mueve el origen al ancla vigente y ajusta el scroll en el
+   * mismo tick para que ese punto quede clavado. Como el transform es
+   * síncrono y el layout no cambia en el gesto, no hay carrera posible
+   * (el bug anterior corregía contra geometría pre-layout). */
+  const retarget = useCallback(
+    (clientX: number, clientY: number, k1: number): boolean => {
+      const g = gestureRef.current
+      const el = scrollRef.current
+      if (!g || !el) return false
+      const bl = el.clientLeft
+      const bt = el.clientTop
+      const midX = clientX - g.cl - bl
+      const midY = clientY - g.ct - bt
+      const ax = contentPointUnder(midX, el.scrollLeft, g.wx, g.ox, g.k)
+      const ay = contentPointUnder(midY, el.scrollTop, g.wy, g.oy, g.k)
+      el.scrollLeft = g.wx + ax - midX
+      el.scrollTop = g.wy + ay - midY
+      const next: GestureState = {
+        ...g,
+        k: k1,
+        ox: ax,
+        oy: ay,
+        midX,
+        midY,
+        ax,
+        ay,
+      }
+      gestureRef.current = next
+      setGestureState(next)
+      return true
+    },
+    [],
+  )
 
   /** Confirma el gesto: escala real + un único ajuste de scroll post-layout.
+   * Con el re-anclaje por tick la deriva es ~cero y la corrección es no-op;
+   * si se pasa el punto de suelta se refresca el `mid` antes de confirmar.
    * Devuelve la escala confirmada (o null si no había gesto). */
-  const commitGesture = (): number | null => {
-    const g = gestureRef.current
-    if (!g) return null
-    const newScale = clampZoom(g.base * g.k)
-    gestureRef.current = null
-    setGestureState(null)
-    if (Math.abs(newScale - g.base) < COMMIT_EPS) return g.base
-    pendingAnchorRef.current = {
-      midX: g.midX,
-      midY: g.midY,
-      ratio: newScale / g.base,
-    }
-    zoomRef.current.setScale(newScale)
-    return newScale
-  }
+  const commitGesture = useCallback(
+    (clientX?: number, clientY?: number): number | null => {
+      if (wheelTimerRef.current !== null) {
+        clearTimeout(wheelTimerRef.current)
+        wheelTimerRef.current = null
+      }
+      let g = gestureRef.current
+      if (!g) return null
+      if (clientX !== undefined && clientY !== undefined) {
+        retarget(clientX, clientY, g.k)
+        g = gestureRef.current
+        if (!g) return null
+      }
+      const newScale = clampZoom(g.base * g.k)
+      gestureRef.current = null
+      setGestureState(null)
+      if (Math.abs(newScale - g.base) < COMMIT_EPS) return g.base
+      pendingAnchorRef.current = {
+        ax: g.ax,
+        ay: g.ay,
+        wx: g.wx,
+        wy: g.wy,
+        midX: g.midX,
+        midY: g.midY,
+        base: g.base,
+        newScale,
+      }
+      zoomRef.current.setScale(newScale)
+      return newScale
+    },
+    [retarget],
+  )
 
-  // Único ajuste de scroll por gesto, ya con el DOM nuevo (sin bucle: el
-  // scroll no se toca durante el gesto, así que la corrección es exacta).
+  // Único ajuste de scroll por gesto, ya con el DOM nuevo y pre-paint: lleva
+  // el ancla (clavada durante todo el gesto) a su posición del viewport.
   useLayoutEffect(() => {
     const a = pendingAnchorRef.current
     const el = scrollRef.current
     if (!a || !el) return
     pendingAnchorRef.current = null
-    if (a.ratio !== 1) {
-      el.scrollLeft = (el.scrollLeft + a.midX) * a.ratio - a.midX
-      el.scrollTop = (el.scrollTop + a.midY) * a.ratio - a.midY
-    }
+    el.scrollLeft = scrollForAnchor(a.wx, a.ax, a.base, a.newScale, a.midX)
+    el.scrollTop = scrollForAnchor(a.wy, a.ay, a.base, a.newScale, a.midY)
   }, [scale])
 
   // `Ctrl/Cmd+rueda` sobre el contenedor (trackpad de desktop). Listener
@@ -190,7 +287,6 @@ export function PdfPreview({
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    let persistTimer: ReturnType<typeof setTimeout> | null = null
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
@@ -198,45 +294,36 @@ export function PdfPreview({
       if (pinchRef.current || dragRef.current) return
       let g = gestureRef.current
       if (!g) {
-        const o = originAt(e.clientX, e.clientY)
-        if (!o) return
-        g = {
-          base: scaleRef.current,
-          k: 1,
-          ox: o.ox,
-          oy: o.oy,
-          midX: o.midX,
-          midY: o.midY,
-        }
-      } else {
-        const rect = el.getBoundingClientRect()
-        g = {
-          ...g,
-          midX: e.clientX - rect.left,
-          midY: e.clientY - rect.top,
-        }
+        const init = startCapture(e.clientX, e.clientY, scaleRef.current)
+        if (!init) return
+        gestureRef.current = init
+        setGestureState(init)
+        g = init
       }
-      const next = { ...g, k: g.k * wheelFactor(e.deltaY, e.deltaMode) }
-      gestureRef.current = next
-      setGestureState(next)
+      retarget(e.clientX, e.clientY, g.k * wheelFactor(e.deltaY, e.deltaMode))
       // Se confirma al asentar la ráfaga, nunca por tick.
-      if (persistTimer !== null) clearTimeout(persistTimer)
-      persistTimer = setTimeout(() => {
-        persistTimer = null
+      if (wheelTimerRef.current !== null) clearTimeout(wheelTimerRef.current)
+      wheelTimerRef.current = setTimeout(() => {
+        wheelTimerRef.current = null
         commitGesture()
       }, WHEEL_COMMIT_DELAY)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => {
       el.removeEventListener('wheel', onWheel)
-      if (persistTimer !== null) {
-        clearTimeout(persistTimer)
-        persistTimer = null
+      if (wheelTimerRef.current !== null) {
+        clearTimeout(wheelTimerRef.current)
+        wheelTimerRef.current = null
       }
     }
-  }, [])
+  }, [startCapture, retarget, commitGesture])
 
-  const endPointer = (id: number, el: HTMLElement | null) => {
+  const endPointer = (
+    id: number,
+    el: HTMLElement | null,
+    clientX?: number,
+    clientY?: number,
+  ) => {
     const tracked = pointersRef.current.get(id)
     pointersRef.current.delete(id)
 
@@ -244,7 +331,7 @@ export function PdfPreview({
     if (dragRef.current && pointersRef.current.size < 2) {
       dragRef.current = null
       if (el) el.style.touchAction = 'pan-x pan-y'
-      commitGesture()
+      commitGesture(clientX, clientY)
       dragEndRef.current = Date.now()
       tapRef.current = null
       return
@@ -254,7 +341,7 @@ export function PdfPreview({
       pinchRef.current = null
       // Restaura el scroll nativo de un dedo.
       if (el) el.style.touchAction = 'pan-x pan-y'
-      commitGesture()
+      commitGesture(clientX, clientY)
       pinchEndRef.current = Date.now()
       tapRef.current = null
       return
@@ -372,10 +459,11 @@ export function PdfPreview({
             sy: e.clientY,
           })
           if (pointersRef.current.size === 2) {
-            // El pinch toma precedencia: confirma un arrastre en curso y
-            // arranca gesto nuevo desde la escala resultante.
+            // El pinch toma precedencia: confirma cualquier gesto en curso
+            // (arrastre o ráfaga de rueda) y arranca desde la escala
+            // resultante, cancelando su timer pendiente.
             let base = scaleRef.current
-            if (dragRef.current) {
+            if (gestureRef.current) {
               dragRef.current = null
               const committed = commitGesture()
               if (committed !== null) base = committed
@@ -384,19 +472,10 @@ export function PdfPreview({
             const startDist = pointerDistance(a, b)
             if (startDist > 0) {
               pinchRef.current = { startDist }
-              const midX = (a.x + b.x) / 2
-              const midY = (a.y + b.y) / 2
-              const o = originAt(midX, midY)
-              if (o) {
-                gestureRef.current = {
-                  base,
-                  k: 1,
-                  ox: o.ox,
-                  oy: o.oy,
-                  midX: o.midX,
-                  midY: o.midY,
-                }
-                setGestureState(gestureRef.current)
+              const init = startCapture((a.x + b.x) / 2, (a.y + b.y) / 2, base)
+              if (init) {
+                gestureRef.current = init
+                setGestureState(init)
               }
               e.currentTarget.style.touchAction = 'none'
               tapRef.current = null
@@ -413,19 +492,18 @@ export function PdfPreview({
             Date.now() > pinchEndRef.current + PINCH_TAP_SUPPRESS &&
             Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_MAX_DIST
           ) {
-            const o = originAt(e.clientX, e.clientY)
-            if (o) {
+            // Si había una ráfaga de rueda a medias, se confirma primero.
+            let base = scaleRef.current
+            if (gestureRef.current) {
+              const committed = commitGesture()
+              if (committed !== null) base = committed
+            }
+            const init = startCapture(e.clientX, e.clientY, base)
+            if (init) {
               dragRef.current = { startY: e.clientY }
               tapRef.current = null
-              gestureRef.current = {
-                base: scaleRef.current,
-                k: 1,
-                ox: o.ox,
-                oy: o.oy,
-                midX: o.midX,
-                midY: o.midY,
-              }
-              setGestureState(gestureRef.current)
+              gestureRef.current = init
+              setGestureState(init)
               e.currentTarget.style.touchAction = 'none'
             }
           }
@@ -435,43 +513,37 @@ export function PdfPreview({
           if (!tracked) return
           tracked.x = e.clientX
           tracked.y = e.clientY
-          const el = scrollRef.current
-          if (!el) return
-          // Pinch: razón de distancias con ganancia, anclado al punto medio.
+          // Pinch: razón de distancias con ganancia, re-anclado al punto
+          // medio en cada tick (el origen sigue a los dedos: deriva cero).
           const pinch = pinchRef.current
           if (pinch && pointersRef.current.size === 2) {
             const g = gestureRef.current
             if (!g) return
             const [a, b] = [...pointersRef.current.values()]
             const dist = pointerDistance(a, b)
-            const rect = el.getBoundingClientRect()
-            // `pinchScale` devuelve escala absoluta (base × ganancia): se
-            // guarda como factor relativo a la base del gesto.
-            const next: GestureState = {
-              ...g,
-              k: pinchScale(g.base, pinch.startDist, dist) / g.base,
-              midX: (a.x + b.x) / 2 - rect.left,
-              midY: (a.y + b.y) / 2 - rect.top,
-            }
-            gestureRef.current = next
-            setGestureState(next)
+            retarget(
+              (a.x + b.x) / 2,
+              (a.y + b.y) / 2,
+              pinchScale(g.base, pinch.startDist, dist) / g.base,
+            )
             return
           }
           // Arrastre vertical con un dedo: subir amplía, bajar reduce.
           const drag = dragRef.current
           if (drag && pointersRef.current.size === 1) {
-            const g = gestureRef.current
-            if (!g) return
-            const next: GestureState = {
-              ...g,
-              k: dragZoomFactor(e.clientY - drag.startY),
-            }
-            gestureRef.current = next
-            setGestureState(next)
+            retarget(
+              e.clientX,
+              e.clientY,
+              dragZoomFactor(e.clientY - drag.startY),
+            )
           }
         }}
-        onPointerUp={(e) => endPointer(e.pointerId, e.currentTarget)}
-        onPointerCancel={(e) => endPointer(e.pointerId, e.currentTarget)}
+        onPointerUp={(e) =>
+          endPointer(e.pointerId, e.currentTarget, e.clientX, e.clientY)
+        }
+        onPointerCancel={(e) =>
+          endPointer(e.pointerId, e.currentTarget, e.clientX, e.clientY)
+        }
         onDoubleClick={() => {
           // El navegador puede sintetizar dblclick tras un arrastre: el zoom
           // ya quedó confirmado, no resetear.
