@@ -574,7 +574,7 @@ entorno, no bug — con rAF activo todo renderiza.
 
 - 9.0 `npm run sync` OK (2 wasm + `wasm_exec.js` + `manifest.json`, tamaños
   según §5); `public/fountain` sin `fountain.mjs`; `src/vendor/*.mjs/.d.mts`.
-- 9.1 dev: boot `LISTO`, `./fountain/fountain-parser.wasm` 200
+- 9.1 dev: boot a `ready` (sin chip; ver REVIEW punto 1), `./fountain/fountain-parser.wasm` 200
   `application/wasm`, wrapper desde el bundle (nunca `public/`), preload
   `fountain-pdf.wasm` en idle verificado en red.
 - 9.2 build+preview: idéntico a dev (`boots===1`, 18 elementos, 2 pág.,
