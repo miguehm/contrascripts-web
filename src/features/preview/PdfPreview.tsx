@@ -471,7 +471,7 @@ export function PdfPreview({
       <div
         ref={scrollRef}
         data-testid="preview-pages"
-        className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-sm border border-border bg-muted/30 p-4 sm:p-6"
+        className="scroll-slim min-h-0 flex-1 overflow-auto overscroll-contain rounded-sm border border-border bg-muted/30 p-4 sm:p-6"
         // Un dedo hace scroll nativo (`pan-x pan-y`, sin zoom nativo); los
         // gestos propios ponen `touch-action:none` síncrono al DOM en
         // `onPointerDown` (sin esperar al re-render, o el navegador inicia

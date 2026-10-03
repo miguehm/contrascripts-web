@@ -137,7 +137,7 @@ export function WarningsPanel({
       className="absolute inset-x-2 top-8 z-10 rounded-lg border border-border bg-popover p-2 shadow-lg ring-1 ring-foreground/10 sm:right-2 sm:left-auto sm:w-96"
     >
       {warnings.length > 0 ? (
-        <ul className="flex max-h-60 flex-col gap-1 overflow-y-auto">
+        <ul className="scroll-slim flex max-h-60 flex-col gap-1 overflow-y-auto">
           {warnings.map((w, i) => (
             <li
               key={`${w.line}-${w.code}-${i}`}

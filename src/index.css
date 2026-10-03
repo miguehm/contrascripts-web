@@ -162,3 +162,37 @@
     outline-offset: 1px;
   }
 }
+
+/* REVIEW.md punto 4: scrollbar fina a juego con Radix `ScrollArea`
+   (thumb `bg-border` redondeado). Vía CSS nativo para no romper el
+   scroller interno de CodeMirror ni los gestos de `PdfPreview`.
+   Firefox usa `scrollbar-*`; Chromium/WebKit usa `::-webkit-scrollbar*`. */
+@layer utilities {
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scroll-slim::-webkit-scrollbar-track,
+  .scroll-slim::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+    background-clip: content-box;
+  }
+  @media (forced-colors: active) {
+    .scroll-slim {
+      scrollbar-width: auto;
+    }
+  }
+}

@@ -70,6 +70,28 @@ const fountainLayout = EditorView.theme({
   '.cm-scroller': {
     minHeight: '0',
     overflow: 'auto',
+    // REVIEW.md punto 4: misma fina que `.scroll-slim` (aquí no sirve
+    // className: el scroll real es interno de CodeMirror).
+    scrollbarWidth: 'thin',
+    scrollbarColor: 'var(--border) transparent',
+  },
+  '.cm-scroller::-webkit-scrollbar': {
+    width: '10px',
+    height: '10px',
+  },
+  '.cm-scroller::-webkit-scrollbar-track, .cm-scroller::-webkit-scrollbar-corner':
+    {
+      background: 'transparent',
+    },
+  '.cm-scroller::-webkit-scrollbar-thumb': {
+    backgroundColor: 'var(--border)',
+    borderRadius: '9999px',
+    border: '3px solid transparent',
+    backgroundClip: 'content-box',
+  },
+  '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+    backgroundColor: 'var(--muted-foreground)',
+    backgroundClip: 'content-box',
   },
   '.cm-content': {
     fontFamily: 'var(--font-mono)',
