@@ -27,6 +27,7 @@ import type { Script } from '@/types/Script'
 import { initScriptsState, scriptsReducer } from '@/store/scriptsReducer'
 import type { ScriptsState } from '@/store/scriptsReducer'
 import { loadScripts, saveScripts } from '@/store/storage'
+import { loadActiveId, saveActiveId } from '@/store/activeScriptStorage'
 
 /** Retardo del autosave tras la última edición. */
 export const SAVE_DEBOUNCE_MS = 500
@@ -60,7 +61,7 @@ function seedIfEmpty(scripts: Script[]): Script[] {
 }
 
 function initState(): ScriptsState {
-  return initScriptsState(seedIfEmpty(loadScripts()))
+  return initScriptsState(seedIfEmpty(loadScripts()), loadActiveId())
 }
 
 export function ScriptsProvider({ children }: { children: ReactNode }) {
@@ -88,6 +89,12 @@ export function ScriptsProvider({ children }: { children: ReactNode }) {
       })
     }
   }, [])
+
+  // Persistir el guion activo (REVIEW.md punto 3): cubre select, create,
+  // import y remove sin duplicar lógica en cada handler.
+  useEffect(() => {
+    saveActiveId(state.activeId)
+  }, [state.activeId])
 
   // Autosave con debounce ante cada cambio.
   useEffect(() => {

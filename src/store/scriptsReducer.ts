@@ -31,10 +31,19 @@ function sorted(scripts: Script[]): Script[] {
   return [...scripts].sort(byRecent)
 }
 
-/** Estado inicial desde lo cargado de `localStorage` (ya validado). */
-export function initScriptsState(scripts: Script[]): ScriptsState {
+/** Estado inicial desde lo cargado de `localStorage` (ya validado).
+ * `preferredId` (guion activo persistido, REVIEW.md punto 3) tiene
+ * prioridad; si ya no existe en la lista, se cae al más reciente. */
+export function initScriptsState(
+  scripts: Script[],
+  preferredId?: string | null,
+): ScriptsState {
   const list = sorted(scripts)
-  return { scripts: list, activeId: list[0]?.id ?? null }
+  const preferred =
+    preferredId != null && list.some((s) => s.id === preferredId)
+      ? preferredId
+      : null
+  return { scripts: list, activeId: preferred ?? list[0]?.id ?? null }
 }
 
 export function scriptsReducer(

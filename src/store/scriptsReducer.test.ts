@@ -33,6 +33,21 @@ describe('initScriptsState', () => {
     expect(s.scripts.map((x) => x.id)).toEqual(['s2', 's1'])
     expect(s.activeId).toBe('s2')
   })
+
+  it('preferredId válido tiene prioridad sobre el más reciente', () => {
+    const s = initScriptsState(
+      [script(), script({ id: 's2', updatedAt: 2000 })],
+      's1',
+    )
+    expect(s.activeId).toBe('s1')
+  })
+
+  it('preferredId inválido, null o ausente → más reciente', () => {
+    const list = [script(), script({ id: 's2', updatedAt: 2000 })]
+    expect(initScriptsState(list, 'nope').activeId).toBe('s2')
+    expect(initScriptsState(list, null).activeId).toBe('s2')
+    expect(initScriptsState(list).activeId).toBe('s2')
+  })
 })
 
 describe('create / import', () => {
