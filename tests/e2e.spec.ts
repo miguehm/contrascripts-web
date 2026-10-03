@@ -16,6 +16,38 @@ async function writeScript(page: Page, text: string): Promise<void> {
   await page.keyboard.insertText(text)
 }
 
+/**
+ * Línea del cursor en el editor *visible*.
+ *
+ * Hay dos editores montados a la vez (el móvil se oculta por CSS en desktop y
+ * al revés), así que se filtra por el que tiene tamaño: leer el primero
+ * mediría el oculto y el test pasaría o fallaría por casualidad.
+ */
+async function readCaretLine(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const active = Array.from(document.querySelectorAll('.cm-activeLine'))
+    const visible = active.find((el) => el.getBoundingClientRect().width > 0)
+    return visible?.textContent ?? ''
+  })
+}
+
+/**
+ * Punto del viewport donde hacer doble clic para caer sobre la primera línea
+ * del guion (la cabecera de escena).
+ *
+ * El renderer coloca el primer elemento en el margen de la página: 1.5" desde
+ * la izquierda y un poco más de 1" desde arriba, en fracciones del ancho/alto
+ * de la hoja. Usar fracciones (no píxeles) lo hace independiente de la escala
+ * y del ajuste al ancho.
+ */
+async function findFirstLinePoint(
+  page: Page,
+): Promise<{ x: number; y: number } | null> {
+  const rect = await page.locator('[data-page]').first().boundingBox()
+  if (!rect) return null
+  return { x: rect.x + rect.width * 0.18, y: rect.y + rect.height * 0.096 }
+}
+
 test('boot único + preview PDF del seed', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
@@ -222,6 +254,53 @@ test('vista en grande: amplía a todo el ancho, persiste y sale', async ({
   await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
     timeout: 30_000,
   })
+})
+
+test('doble clic en el documento lleva el cursor a esa línea', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  // La cabecera de escena es la primera línea y va en una posición fija de la
+  // hoja, así que el clic se puede calcular. El marcador la hace única.
+  const heading = `EXT. MARCADOR ${Date.now()} - DIA`
+  await writeScript(page, `${heading}\n\nAcción.\n`)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+
+  const target = await findFirstLinePoint(page)
+  expect(target).not.toBeNull()
+  await page.mouse.dblclick(target!.x, target!.y)
+
+  // El cursor quedó en la cabecera del editor *visible*, no en el oculto (el
+  // móvil) ni en la acción de otra línea.
+  await expect
+    .poll(() => readCaretLine(page), { timeout: 10_000 })
+    .toBe(heading)
+})
+
+test('el doble clic ya no alterna el zoom', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  const zoom = page.getByRole('button', { name: /Zoom \d+ por ciento/ })
+  await expect(zoom).toBeVisible()
+  // Amplía con el botón `+` de la cabecera del preview.
+  await page.getByRole('button', { name: 'Ampliar zoom' }).click()
+  await expect(zoom).toContainText('125 %')
+  const afterZoom = await zoom.getAttribute('aria-label')
+  // El doble clic ya no alterna el zoom: lleva al editor (punto 4).
+  await page.mouse.dblclick(400, 400)
+  await page.waitForTimeout(300)
+  expect(await zoom.getAttribute('aria-label')).toBe(afterZoom)
 })
 
 test('persistencia tras recarga', async ({ page }) => {

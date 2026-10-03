@@ -10,7 +10,7 @@
 // dual-pane con `ResizablePanelGroup`. Móvil: drawer lateral + tabs
 // Editor/Preview. Los tokens Warm/Cinematic (§8) quedan fuera.
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Menu,
   PanelLeftClose,
@@ -22,12 +22,14 @@ import {
 import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import type { EditorView } from '@codemirror/view'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { Editor } from '@/features/editor/Editor'
+import { jumpToOffset } from '@/features/editor/jumpToOffset'
 import { PdfPreview } from '@/features/preview/PdfPreview'
 import { usePdfPreview } from '@/features/preview/usePdfPreview'
 import {
@@ -96,6 +98,9 @@ function StatusBadge({
 // capitular (slot `headerAction`, 0px extra en reposo) y el panel cae como
 // hoja desde ella. `useId` por columna: móvil y desktop coexisten montados
 // (`md:hidden` / `hidden md:flex`), cada trigger apunta a su propio panel.
+// `onViewReady` propaga el `EditorView` de cada columna para el salto al texto
+// del punto 4. Las dos coexisten montadas (una oculta por CSS), así que el
+// consumidor elige la visible midiendo su contenedor.
 function EditorColumn({
   text,
   disabled,
@@ -103,6 +108,7 @@ function EditorColumn({
   warnings,
   warningsOpen,
   onWarningsOpenChange,
+  onViewReady,
 }: {
   text: string
   disabled: boolean
@@ -110,6 +116,8 @@ function EditorColumn({
   warnings: Warning[]
   warningsOpen: boolean
   onWarningsOpenChange: (open: boolean) => void
+  /** Recibe la vista de esta columna con su contenedor (punto 4). */
+  onViewReady?: (view: EditorView | null, container: HTMLElement | null) => void
 }) {
   const panelId = useId()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -120,6 +128,7 @@ function EditorColumn({
           value={text}
           onChange={onChange}
           disabled={disabled}
+          onViewReady={onViewReady}
           headerAction={
             <WarningsTrigger
               ref={triggerRef}
@@ -200,6 +209,45 @@ export default function App() {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const text = activeScript?.text ?? ''
   const { status, doc, warnings, retry } = useParser(text)
+
+  // Punto 4: la vista del editor visible, para saltar al texto que se ha
+  // doble-clickado en el documento. Hay dos columnas montadas a la vez —móvil
+  // y desktop, una oculta por CSS—, así que se guarda cada vista con su
+  // contenedor y el salto elige la que tiene tamaño.
+  const editorViewsRef = useRef<
+    { view: EditorView; container: HTMLElement | null }[]
+  >([])
+  const handleViewReady = useCallback(
+    (view: EditorView | null, container: HTMLElement | null) => {
+      const entries = editorViewsRef.current
+      // `container = null` al desmontar una columna: solo se retira esa, que la
+      // otra puede seguir montada y ser la visible.
+      if (!view) return
+      if (!container) {
+        editorViewsRef.current = entries.filter((entry) => entry.view !== view)
+        return
+      }
+      const at = entries.findIndex((entry) => entry.view === view)
+      if (at >= 0) entries[at] = { view, container }
+      else entries.push({ view, container })
+    },
+    [],
+  )
+
+  // El salto va al editor, y en móvil además cambia de tab: el documento solo
+  // está visible mientras el tab Editor no lo tapa.
+  const handleJumpToSource = useCallback((offset: number) => {
+    // La columna visible es la que tiene tamaño; si ninguna midiera (aún
+    // montando, o un breakpoint raro con las dos a pantalla completa) se usa la
+    // última registrada.
+    const entries = editorViewsRef.current
+    const target =
+      entries
+        .filter((entry) => (entry.container?.offsetWidth ?? 0) > 0)
+        .at(-1) ?? entries.at(-1)
+    if (target) jumpToOffset(target.view, offset)
+    setTab('editor')
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -371,6 +419,7 @@ export default function App() {
                 warnings={warnings}
                 warningsOpen={warningsOpen}
                 onWarningsOpenChange={setWarningsOpen}
+                onViewReady={handleViewReady}
               />
             ) : (
               <div className="min-h-0 flex-1">
@@ -382,6 +431,9 @@ export default function App() {
                   expanded={previewExpanded}
                   onToggleExpand={toggleExpanded}
                   fitEnabled={!isDesktop}
+                  doc={doc}
+                  source={text}
+                  onJumpToSource={handleJumpToSource}
                 />
               </div>
             )}
@@ -411,6 +463,9 @@ export default function App() {
                       zoom={zoom}
                       expanded={previewExpanded}
                       onToggleExpand={toggleExpanded}
+                      doc={doc}
+                      source={text}
+                      onJumpToSource={handleJumpToSource}
                     />
                   </div>
                 </div>
@@ -432,6 +487,7 @@ export default function App() {
                         warnings={warnings}
                         warningsOpen={warningsOpen}
                         onWarningsOpenChange={setWarningsOpen}
+                        onViewReady={handleViewReady}
                       />
                     </div>
                   </ResizablePanel>
@@ -452,6 +508,9 @@ export default function App() {
                         zoom={zoom}
                         expanded={previewExpanded}
                         onToggleExpand={toggleExpanded}
+                        doc={doc}
+                        source={text}
+                        onJumpToSource={handleJumpToSource}
                       />
                     </div>
                   </ResizablePanel>
@@ -465,6 +524,7 @@ export default function App() {
                     warnings={warnings}
                     warningsOpen={warningsOpen}
                     onWarningsOpenChange={setWarningsOpen}
+                    onViewReady={handleViewReady}
                   />
                 </div>
               )}

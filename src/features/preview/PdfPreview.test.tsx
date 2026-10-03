@@ -14,6 +14,7 @@ import { PdfPreview } from './PdfPreview'
 import { usePreviewZoom } from '@/hooks/usePreviewZoom'
 import type { PdfPreviewState } from './usePdfPreview'
 import type { PdfDocument } from '@/lib/pdfjs'
+import type { Document } from '@/vendor/fountain.mjs'
 
 afterEach(cleanup)
 
@@ -24,7 +25,12 @@ function makePdf(pages = 2) {
     getViewport: ({ scale }: { scale: number }) => ({
       width: 612 * scale,
       height: 792 * scale,
+      scale,
+      // Transform real de pdf.js para una Letter sin rotación: voltea el eje Y,
+      // que es lo que hace que el hit-test del punto 4 use `PAGE_H - y`.
+      transform: [scale, 0, 0, -scale, 0, 792 * scale],
     }),
+    getTextContent: vi.fn(async () => ({ items: [] })),
     render: vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() })),
     cleanup: vi.fn(),
   }
@@ -32,6 +38,37 @@ function makePdf(pages = 2) {
     getPage: vi.fn(async () => page),
     numPages: pages,
   } as unknown as PdfDocument
+  return pdf
+}
+
+/** Hoja del fixture: una línea de texto en el tercio superior. */
+function textItem(str: string, x = 72, y = 700, width = 120) {
+  return {
+    str,
+    width,
+    height: 10,
+    transform: [12, 0, 0, 12, x, y],
+    fontName: 'g_d0_f1',
+    hasEOL: false,
+    dir: 'ltr',
+  }
+}
+
+/** PDF con una página que publica `items` en `getTextContent`. */
+function makePdfWithText(items: ReturnType<typeof textItem>[]) {
+  const pdf = makePdf(1)
+  const page = pdf.getPage as unknown as ReturnType<typeof vi.fn>
+  page.mockResolvedValue({
+    getViewport: ({ scale }: { scale: number }) => ({
+      width: 612 * scale,
+      height: 792 * scale,
+      scale,
+      transform: [scale, 0, 0, -scale, 0, 792 * scale],
+    }),
+    getTextContent: vi.fn(async () => ({ items })),
+    render: vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() })),
+    cleanup: vi.fn(),
+  })
   return pdf
 }
 
@@ -56,12 +93,18 @@ function Harness({
   onPausedChange = () => {},
   fitEnabled = false,
   fitDefault = false,
+  doc = null,
+  source = '',
+  onJumpToSource,
 }: {
   preview: PdfPreviewState
   paused?: boolean
-  onPausedChange?: () => void
+  onPausedChange?: (paused: boolean) => void
   fitEnabled?: boolean
   fitDefault?: boolean
+  doc?: Document | null
+  source?: string
+  onJumpToSource?: (offset: number) => void
 }) {
   const zoom = usePreviewZoom({ fitDefault })
   return (
@@ -71,6 +114,9 @@ function Harness({
       onPausedChange={onPausedChange}
       zoom={zoom}
       fitEnabled={fitEnabled}
+      doc={doc}
+      source={source}
+      onJumpToSource={onJumpToSource}
     />
   )
 }
@@ -249,14 +295,14 @@ describe('PdfPreview', () => {
     await flush()
   })
 
-  it('doble-clic alterna 100% y anterior', async () => {
+  it('el doble-clic ya no toca el zoom (punto 4)', async () => {
+    // El zoom dejó de depender del doble-clic: ahora es por gestos o por el
+    // número del porcentaje, y el doble-clic lleva al editor.
     const pdf = makePdf(1)
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
     fireEvent.click(screen.getByLabelText('Ampliar zoom'))
     expect(screen.getByText('125 %')).toBeDefined()
-    fireEvent.doubleClick(screen.getByTestId('preview-pages'))
-    expect(screen.getByText('100 %')).toBeDefined()
     fireEvent.doubleClick(screen.getByTestId('preview-pages'))
     expect(screen.getByText('125 %')).toBeDefined()
     await flush()
@@ -458,6 +504,7 @@ describe('vista en grande (REVIEW.md punto 2)', () => {
       effectivePercent: 100,
       setFitMode: vi.fn(),
       setFitScale: vi.fn(),
+      resetForScript: vi.fn(),
     }
     const { rerender } = render(
       <PdfPreview
@@ -528,7 +575,9 @@ describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
     await flush()
   })
 
-  it('doble-clic en móvil reajusta al ancho (no alterna 100%)', async () => {
+  it('en móvil el porcentaje vuelve al ajuste al ancho', async () => {
+    // Tras el punto 4 el doble-clic lleva al editor, así que el fit se
+    // recupera tocando el número del porcentaje.
     const pdf = makePdf(1)
     render(
       <Harness
@@ -539,13 +588,19 @@ describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
     )
     await screen.findByLabelText('Página 1 de 1')
     fireEvent.click(screen.getByLabelText('Ampliar zoom'))
-    fireEvent.doubleClick(screen.getByTestId('preview-pages'))
-    // No aparece 100%: en móvil el doble-clic entra en fit.
-    expect(screen.queryByText('100 %')).toBeNull()
+    const percent = screen.getByText('125 %')
+    // Fuera de fit: el número ofrece volver a ajustarlo.
+    expect(percent.getAttribute('aria-label')).toContain('Tocar para ajustar')
+    fireEvent.click(percent)
+    // jsdom no tiene ResizeObserver, así que no hay escala medida; lo que se
+    // verifica es que el modo fit queda activo.
+    expect(screen.getByText('125 %').getAttribute('aria-label')).toContain(
+      'ajustado al ancho',
+    )
     await flush()
   })
 
-  it('desktop: el porcentaje sigue reseteando a 100% y no hay fit', async () => {
+  it('desktop: el porcentaje resetea a 100% y el doble-clic no lo toca', async () => {
     const pdf = makePdf(1)
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
@@ -553,7 +608,7 @@ describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
     fireEvent.click(screen.getByText('125 %'))
     expect(screen.getByText('100 %')).toBeDefined()
     fireEvent.doubleClick(screen.getByTestId('preview-pages'))
-    expect(screen.getByText('125 %')).toBeDefined()
+    expect(screen.getByText('100 %')).toBeDefined()
     await flush()
   })
 })
@@ -594,5 +649,200 @@ describe('banner de procesamiento (REVIEW.md punto 2, móvil)', () => {
       <Harness preview={makePreview({ status: 'rendering' })} paused={true} />,
     )
     expect(screen.queryByText('Procesando documento…')).toBeNull()
+  })
+})
+
+describe('salto al editor (REVIEW.md punto 4)', () => {
+  const source = [
+    'EXT. CASA - DIA',
+    '',
+    'Stars blanket the void.',
+    '',
+    'ELENA',
+    '¿Me oyes?',
+  ].join('\n')
+
+  /** Documento con las mismas líneas que el parser emitiría. */
+  function doc(): Document {
+    return {
+      titlePage: {} as Document['titlePage'],
+      elements: [
+        { type: 'sceneHeading', line: 1, text: 'EXT. CASA - DIA' },
+        { type: 'action', line: 3, text: 'Stars blanket the void.' },
+        { type: 'character', line: 5, text: 'ELENA' },
+        { type: 'dialogue', line: 6, text: '¿Me oyes?' },
+      ],
+    } as unknown as Document
+  }
+
+  /** Rect de la hoja en el viewport: sin scroll ni margen. */
+  function stubPageRect(page: HTMLElement, top = 0) {
+    page.getBoundingClientRect = vi.fn(
+      () => ({ left: 0, top, width: 612, height: 792 }) as DOMRect,
+    )
+  }
+
+  async function renderReady(items: ReturnType<typeof textItem>[]) {
+    const pdf = makePdfWithText(items)
+    const onJumpToSource = vi.fn()
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        doc={doc()}
+        source={source}
+        onJumpToSource={onJumpToSource}
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    const page = document.querySelector<HTMLElement>('[data-page="1"]')!
+    stubPageRect(page)
+    await flush()
+    return { pdf, onJumpToSource, page }
+  }
+
+  it('el doble clic sobre un texto salta a su offset', async () => {
+    const { onJumpToSource, page } = await renderReady([
+      textItem('Stars blanket the void.'),
+    ])
+    // La caja de la línea va de 792-700-12=80 a 92, y el clic cae en su borde
+    // izquierdo para apuntar al primer carácter.
+    fireEvent.doubleClick(page, { clientX: 73, clientY: 86 })
+    await flush()
+
+    expect(onJumpToSource).toHaveBeenCalledWith(source.indexOf('Stars'))
+  })
+
+  it('el doble clic sitúa el cursor en el carácter clicado', async () => {
+    const { onJumpToSource, page } = await renderReady([
+      textItem('Stars blanket the void.', 72, 700, 240),
+    ])
+    // Courier Prime es monoespaciada: con 240px para 23 letras, el carácter 6
+    // ("blanket") está en x = 72 + 240/23·6.
+    fireEvent.doubleClick(page, { clientX: 72 + (240 / 23) * 6, clientY: 86 })
+    await flush()
+
+    expect(onJumpToSource).toHaveBeenCalledWith(source.indexOf('blanket'))
+  })
+
+  it('no salta con un clic en el margen, lejos de todo texto', async () => {
+    const { onJumpToSource, page } = await renderReady([
+      textItem('Stars blanket the void.'),
+    ])
+
+    fireEvent.doubleClick(page, { clientX: 300, clientY: 400 })
+    await flush()
+
+    expect(onJumpToSource).not.toHaveBeenCalled()
+  })
+
+  it('no salta si el texto del PDF no aparece en el guion', async () => {
+    const { onJumpToSource, page } = await renderReady([
+      textItem('TEXTO QUE NO EXISTE'),
+    ])
+
+    fireEvent.doubleClick(page, { clientX: 100, clientY: 86 })
+    await flush()
+
+    expect(onJumpToSource).not.toHaveBeenCalled()
+  })
+
+  it('no salta si la página no ha publicado su texto', async () => {
+    // El PDF llega sin `getTextContent`, o aún no ha resuelto: no hay hit-test.
+    const pdf = makePdf(1)
+    const onJumpToSource = vi.fn()
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        doc={doc()}
+        source={source}
+        onJumpToSource={onJumpToSource}
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    stubPageRect(document.querySelector<HTMLElement>('[data-page="1"]')!)
+    await flush()
+
+    fireEvent.doubleClick(screen.getByTestId('preview-pages'), {
+      clientX: 100,
+      clientY: 86,
+    })
+    await flush()
+
+    expect(onJumpToSource).not.toHaveBeenCalled()
+  })
+
+  it('sin callback, el doble clic no rompe nada', async () => {
+    const pdf = makePdfWithText([textItem('Stars blanket the void.')])
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        doc={doc()}
+        source={source}
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    stubPageRect(document.querySelector<HTMLElement>('[data-page="1"]')!)
+    await flush()
+
+    // Sin `onJumpToSource` el gesto es un no-op, no un error.
+    fireEvent.doubleClick(screen.getByTestId('preview-pages'), {
+      clientX: 100,
+      clientY: 86,
+    })
+    await flush()
+  })
+
+  it('el doble-tap quieto en móvil salta al editor', async () => {
+    // Dos toques separados 100ms (dentro de TAP_TIMEOUT) y sin mover el dedo:
+    // el gesto queda en k≈1, sin zoom. Arrastrarlo sí sería zoom.
+    const { onJumpToSource, page } = await renderReady([
+      textItem('Stars blanket the void.'),
+    ])
+    const base = Date.now()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(base)
+    const touch = {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 73,
+      clientY: 86,
+    }
+    fireEvent.pointerDown(page, touch)
+    fireEvent.pointerUp(page, touch)
+    now.mockReturnValue(base + 100)
+    fireEvent.pointerDown(page, touch)
+    fireEvent.pointerUp(page, touch)
+    await flush()
+
+    expect(onJumpToSource).toHaveBeenCalledWith(source.indexOf('Stars'))
+    now.mockRestore()
+  })
+
+  it('el doble-tap-arrastrado no salta al editor, hace zoom', async () => {
+    // El segundo toque se convierte en arrastre (el dedo sube 150px): el zoom
+    // queda intacto y el salto no se dispara.
+    const { onJumpToSource } = await renderReady([
+      textItem('Stars blanket the void.'),
+    ])
+    const scroller = screen.getByTestId('preview-pages')
+    const base = Date.now()
+    const now = vi.spyOn(Date, 'now').mockReturnValue(base)
+    const touch = {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 73,
+      clientY: 86,
+    }
+    fireEvent.pointerDown(scroller, touch)
+    fireEvent.pointerUp(scroller, touch)
+    now.mockReturnValue(base + 100)
+    fireEvent.pointerDown(scroller, touch)
+    fireEvent.pointerMove(scroller, { ...touch, clientY: 86 - 150 })
+    fireEvent.pointerUp(scroller, { ...touch, clientY: 86 - 150 })
+    await flush()
+
+    expect(onJumpToSource).not.toHaveBeenCalled()
+    now.mockRestore()
   })
 })

@@ -19,8 +19,7 @@
 //   real (un solo render + una sola re-rasterización) con un único ajuste de
 //   scroll post-layout.
 // - Gestos: pinch de 2 dedos amplificado (×2.0), `Ctrl/Cmd+rueda` (pellizco
-//   del trackpad), doble-tap-arrastrar vertical con un dedo (estilo Maps) y
-//   doble-clic para alternar 100% ↔ anterior.
+//   del trackpad) y doble-tap-arrastrar vertical con un dedo (estilo Maps).
 //
 // Fit al ancho (REVIEW.md punto 1, solo móvil):
 // - `PdfPreview` no decide el modo: lo trae `zoom.fitMode` (vive en `App`
@@ -28,8 +27,19 @@
 // - Cuando `fitEnabled`, un `ResizeObserver` sobre el contenedor mide el
 //   ancho útil y publica `zoom.setFitScale()` (no persiste: depende del
 //   viewport). La escala mostrada es `zoom.effectiveScale`.
-// - Cualquier zoom manual (`setScale`, botones, gestos, doble-clic) sale
-//   de fit; el botón "Ajustar al ancho" vuelve a entrar.
+// - Volver al ajuste al ancho es tocar el número del porcentaje (el doble-clic
+//   ya no lo hace, ahora lleva al editor).
+//
+// Salto al editor (REVIEW.md punto 4):
+// - El doble clic (o doble tap) sobre un texto del documento lleva al editor
+//   con el cursor en ese texto. El zoom dejó de depender de este gesto: ahora
+//   es por gestos o por el número del porcentaje.
+// - Cada página publica sus ítems de texto (`getTextContent`) y aquí se
+//   guardan en un ref: no hay re-render porque solo se consultan en el clic.
+// - El puntero se convierte a coordenadas de la hoja con el rect de su
+//   wrapper, se elige el ítem más cercano (`pickItemAt`) y su texto se
+//   traduce a offset del fuente (`resolveJumpOffset`). Si algo no casa —un
+//   margen, una nota que no se imprime, un texto que no está— no se hace nada.
 
 import {
   useCallback,
@@ -51,8 +61,12 @@ import {
   pinchScale,
   wheelFactor,
 } from '@/hooks/usePreviewZoom'
+import { pickItemAt } from './textHit'
+import { resolveJumpOffset } from './sourceMap'
 import { PdfPage } from './PdfPage'
 import type { PdfPreviewState } from './usePdfPreview'
+import type { PdfDocument, PdfTextItem } from '@/lib/pdfjs'
+import type { Document } from '@/vendor/fountain.mjs'
 
 interface PdfPreviewProps {
   preview: PdfPreviewState
@@ -65,6 +79,11 @@ interface PdfPreviewProps {
   /** Fit al ancho (punto 1): solo la rama móvil de `App` lo activa.
    * En desktop se omite (falso) y el zoom manual queda intacto. */
   fitEnabled?: boolean
+  /** Documento parseado y su texto, para resolver el offset del punto 4. */
+  doc?: Document | null
+  source?: string
+  /** Doble clic en un texto: lleva al editor con el cursor ahí. */
+  onJumpToSource?: (offset: number) => void
 }
 
 interface PinchState {
@@ -108,6 +127,10 @@ interface DragState {
 /** Ventana para el segundo tap (ms) y distancia máxima entre taps (px). */
 const TAP_TIMEOUT = 300
 const TAP_MAX_DIST = 24
+/** Desplazamiento que distingue un tap de un arrastre (px). */
+const TAP_SLOP = 10
+/** Variación del factor de zoom por debajo de la cual no hubo gesto. */
+const TAP_GESTURE_EPS = 0.02
 /** Pausa tras un pinch durante la que no se registra tap (ms). */
 const PINCH_TAP_SUPPRESS = 500
 /** La ráfaga de rueda se confirma tras este silencio (ms). */
@@ -141,6 +164,9 @@ export function PdfPreview({
   expanded = false,
   onToggleExpand,
   fitEnabled = false,
+  doc = null,
+  source = '',
+  onJumpToSource,
 }: PdfPreviewProps) {
   const { status, pdf, numPages, error, renderNow } = preview
   const {
@@ -174,11 +200,30 @@ export function PdfPreview({
   } | null>(null)
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scaleRef = useRef(scale)
-  const prevScaleRef = useRef<number | null>(null)
   // Espejo del hook para el listener nativo de rueda (suscripción única).
   const zoomRef = useRef(zoom)
   // Vista previa del gesto (re-render barato: solo cambia un transform).
   const [gesture, setGestureState] = useState<GestureState | null>(null)
+  // Texto de cada página para el hit-test del punto 4, en un ref: solo se lee
+  // en el clic, así que guardarlo no debe costar un render. Se guarda junto
+  // al PDF al que pertenece porque los ítems describen una hoja concreta: al
+  // cambiar el PDF, el texto del anterior ya no dice nada de lo que se ve.
+  const textByPageRef = useRef<{
+    pdf: PdfDocument | null
+    pages: Map<number, PdfTextItem[]>
+  }>({ pdf: null, pages: new Map() })
+
+  const handleTextContent = useCallback(
+    (pageNumber: number, items: PdfTextItem[]) => {
+      const store = textByPageRef.current
+      if (store.pdf !== pdf) {
+        store.pdf = pdf
+        store.pages.clear()
+      }
+      store.pages.set(pageNumber, items)
+    },
+    [pdf],
+  )
 
   // Escala mostrada: durante el gesto, base × k (sin tocar el layout).
   const displayScale = gesture
@@ -190,7 +235,6 @@ export function PdfPreview({
   // viven fuera del render. Solo se escriben en efectos, nunca en el render.
   useEffect(() => {
     scaleRef.current = scale
-    if (scale !== 1) prevScaleRef.current = scale
   }, [scale])
 
   useEffect(() => {
@@ -388,7 +432,78 @@ export function PdfPreview({
     }
   }, [startCapture, retarget, commitGesture])
 
-  const endPointer = (id: number, el: HTMLElement | null) => {
+  /**
+   * Punto 4: lleva al editor con el cursor en el texto que hay bajo el puntero.
+   *
+   * El objetivo del evento da la página (su wrapper lleva `data-page`), el rect
+   * de ese wrapper convierte el puntero a coordenadas de la hoja, y con el
+   * viewport a la escala vigente se elige el ítem más cercano. Devuelve sin
+   * hacer nada si no hay PDF, si no hay texto publicado para la página, si el
+   * clic cayó en un margen o si el texto no se puede ubicar en el fuente: un
+   * salto a un sitio arbitrario sería peor que no hacer nada.
+   */
+  const jumpFromPoint = useCallback(
+    async (
+      target: EventTarget | null,
+      clientX: number,
+      clientY: number,
+    ): Promise<void> => {
+      if (!pdf || !onJumpToSource || !(target instanceof Element)) return
+      const pageEl = target.closest<HTMLElement>('[data-page]')
+      if (!pageEl) return
+      const pageNumber = Number(pageEl.dataset.page)
+      const store = textByPageRef.current
+      // Un PDF nuevo invalida el texto del anterior.
+      if (store.pdf !== pdf) {
+        store.pdf = pdf
+        store.pages.clear()
+      }
+      // El texto se pide aquí si aún no está: la página puede no haber
+      // publicado sus ítems (el raster entra por viewport y el doble clic
+      // puede llegar antes), y esperar a que sea preciso haría que el primer
+      // doble clic tras abrir el documento no hiciera nada.
+      let items = store.pages.get(pageNumber)
+      if (!items) {
+        try {
+          const page = await pdf.getPage(pageNumber)
+          items = (await page.getTextContent()).items as PdfTextItem[]
+          store.pages.set(pageNumber, items)
+        } catch {
+          return
+        }
+      }
+      if (items.length === 0) return
+      try {
+        const page = await pdf.getPage(pageNumber)
+        const viewport = page.getViewport({ scale })
+        const rect = pageEl.getBoundingClientRect()
+        const hit = pickItemAt(
+          items,
+          viewport,
+          clientX - rect.left,
+          clientY - rect.top,
+        )
+        if (!hit) return
+        const offset = resolveJumpOffset(
+          doc,
+          source,
+          hit.item.str,
+          hit.charIndex,
+        )
+        if (offset === null) return
+        onJumpToSource(offset)
+      } catch {
+        // Página no disponible (se está regenerando el PDF): sin salto.
+      }
+    },
+    [pdf, doc, source, scale, onJumpToSource],
+  )
+
+  const endPointer = (
+    id: number,
+    el: HTMLElement | null,
+    target: EventTarget | null,
+  ) => {
     const tracked = pointersRef.current.get(id)
     pointersRef.current.delete(id)
 
@@ -396,6 +511,23 @@ export function PdfPreview({
     if (dragRef.current && pointersRef.current.size < 2) {
       dragRef.current = null
       if (el) el.style.touchAction = 'pan-x pan-y'
+      // Punto 4: el segundo toque de un doble-tap entra aquí con el gesto ya
+      // iniciado, aunque luego el dedo no se mueva. Si el factor se quedó en ~1
+      // y el dedo apenas se desplazó, fue un doble-tap y no un zoom: salta al
+      // editor en vez de confirmar una escala que no ha cambiado.
+      const g = gestureRef.current
+      const tapped =
+        g !== null &&
+        Math.abs(g.k - 1) < TAP_GESTURE_EPS &&
+        tracked !== undefined &&
+        Math.hypot(tracked.x - tracked.sx, tracked.y - tracked.sy) < TAP_SLOP
+      if (tapped) {
+        gestureRef.current = null
+        setGestureState(null)
+        tapRef.current = null
+        void jumpFromPoint(target, tracked.x, tracked.y)
+        return
+      }
       commitGesture()
       dragEndRef.current = Date.now()
       tapRef.current = null
@@ -441,9 +573,9 @@ export function PdfPreview({
           >
             −
           </Button>
-          {/* Punto 1 (móvil): el número de porcentaje es solo indicador;
-              el fit se aplica al abrir el documento. En desktop sigue
-              reseteando al 100 %. */}
+          {/* Punto 1 (móvil): el número es el indicador y, a la vez, el gesto
+              de vuelta al ajuste al ancho —el doble-clic ya lleva al
+              editor—. En desktop sigue reseteando al 100 %. */}
           <Button
             size="xs"
             variant="ghost"
@@ -451,16 +583,17 @@ export function PdfPreview({
               fitEnabled
                 ? fitMode
                   ? `Zoom ${displayPercent} por ciento, ajustado al ancho`
-                  : `Zoom ${displayPercent} por ciento`
+                  : `Zoom ${displayPercent} por ciento. Tocar para ajustar al ancho`
                 : `Zoom ${displayPercent} por ciento. Activar para restablecer al 100 por ciento`
             }
             title={
               fitEnabled
-                ? `Zoom ${displayPercent} %`
-                : 'Restablecer zoom al 100 % (o doble-clic en la página)'
+                ? `Zoom ${displayPercent} %. Tocar para ajustar al ancho`
+                : 'Restablecer zoom al 100 %'
             }
             onClick={() => {
-              if (!fitEnabled) zoom.reset()
+              if (fitEnabled) setFitMode(true)
+              else zoom.reset()
             }}
             className="min-w-10 font-mono text-[10px] text-muted-foreground tabular-nums"
             aria-live="polite"
@@ -657,24 +790,19 @@ export function PdfPreview({
               )
             }
           }}
-          onPointerUp={(e) => endPointer(e.pointerId, e.currentTarget)}
-          onPointerCancel={(e) => endPointer(e.pointerId, e.currentTarget)}
-          onDoubleClick={() => {
-            // El navegador puede sintetizar dblclick tras un arrastre: el zoom
-            // ya quedó confirmado, no resetear.
+          onPointerUp={(e) =>
+            endPointer(e.pointerId, e.currentTarget, e.target)
+          }
+          onPointerCancel={(e) =>
+            endPointer(e.pointerId, e.currentTarget, e.target)
+          }
+          onDoubleClick={(e) => {
+            // Punto 4: el doble-clic lleva al editor. Ya no alterna el zoom.
+            // El guard sigue haciendo falta porque el navegador sintetiza un
+            // dblclick tras un arrastre, y ese gesto sí era de zoom.
             if (Date.now() - dragEndRef.current < DRAG_DBLCLICK_GUARD) return
             if (gestureRef.current) return
-            // Móvil (punto 1): no hay reset a 100%; doble-clic reajusta al ancho.
-            if (fitEnabled) {
-              setFitMode(true)
-              return
-            }
-            if (scaleRef.current !== 1) {
-              prevScaleRef.current = scaleRef.current
-              zoom.reset()
-            } else if (prevScaleRef.current && prevScaleRef.current !== 1) {
-              zoom.setScale(prevScaleRef.current)
-            }
+            void jumpFromPoint(e.target, e.clientX, e.clientY)
           }}
         >
           {pdf ? (
@@ -699,6 +827,7 @@ export function PdfPreview({
                   pageNumber={i + 1}
                   numPages={numPages}
                   scale={scale}
+                  onTextContent={handleTextContent}
                 />
               ))}
             </div>

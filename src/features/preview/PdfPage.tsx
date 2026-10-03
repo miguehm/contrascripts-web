@@ -12,6 +12,11 @@
 //   instante (reescalado proporcional síncrono), mientras el raster —caro—
 //   usa `useDeferredValue(scale)`: durante el gesto no se re-rasteriza,
 //   solo al asentar la escala. Una re-rasterización por gesto, no por tick.
+// - Texto (punto 4): además del raster se pide `getTextContent()` y se
+//   publica en `onTextContent` para que el doble-clic sepa qué hay bajo el
+//   puntero. Es una llamada extra al worker por página, pero solo para las
+//   que entran en viewport y el resultado no se usa para pintar nada: el
+//   hit-test es geométrico (ver `./textHit`), sin capa de texto DOM.
 
 import {
   useDeferredValue,
@@ -21,16 +26,24 @@ import {
   useState,
 } from 'react'
 import type { RenderTask } from 'pdfjs-dist'
-import type { PdfDocument } from '@/lib/pdfjs'
+import type { PdfDocument, PdfTextItem } from '@/lib/pdfjs'
 
 interface PdfPageProps {
   pdf: PdfDocument
   pageNumber: number // 1-based
   numPages: number
   scale: number
+  /** Texto de la página para el hit-test del punto 4 (opcional). */
+  onTextContent?: (pageNumber: number, items: PdfTextItem[]) => void
 }
 
-export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
+export function PdfPage({
+  pdf,
+  pageNumber,
+  numPages,
+  scale,
+  onTextContent,
+}: PdfPageProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [inView, setInView] = useState(false)
@@ -117,6 +130,30 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
       task?.cancel()
     }
   }, [pdf, pageNumber, rasterScale, inView])
+
+  // Texto de la página para el hit-test del punto 4. Vive en un efecto aparte
+  // y no depende de `scale`: los ítems vienen en espacio PDF (sin escalar), así
+  // que un zoom no vuelve a pedirlos. Es una precarga: `PdfPreview` pide el
+  // texto bajo demanda si el doble-clic llega antes de que esta página haya
+  // entrado en viewport, así que un fallo aquí no rompe nada.
+  useEffect(() => {
+    if (!inView || !onTextContent) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const page = await pdf.getPage(pageNumber)
+        if (cancelled) return
+        const text = await page.getTextContent()
+        if (cancelled) return
+        onTextContent(pageNumber, text.items as PdfTextItem[])
+      } catch {
+        // Sin texto no hay hit-test; el raster sigue su curso.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [pdf, pageNumber, inView, onTextContent])
 
   return (
     <div
