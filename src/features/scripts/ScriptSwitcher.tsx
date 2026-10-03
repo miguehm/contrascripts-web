@@ -17,7 +17,7 @@ import { useScripts } from '@/hooks/useScripts'
 import { ImportButton } from './ImportButton'
 
 export function ScriptSwitcher() {
-  const { scripts, activeId, activeScript, createScript, selectScript } =
+  const { scripts, activeId, activeScript, requestCreateScript, selectScript } =
     useScripts()
   const [open, setOpen] = useState(false)
 
@@ -51,7 +51,7 @@ export function ScriptSwitcher() {
           {scripts.length > 0 ? <DropdownMenuSeparator /> : null}
           <DropdownMenuItem
             onSelect={() => {
-              createScript()
+              requestCreateScript()
               setOpen(false)
             }}
           >
@@ -63,7 +63,7 @@ export function ScriptSwitcher() {
       <Button
         variant="ghost"
         size="icon-sm"
-        onClick={() => createScript()}
+        onClick={() => requestCreateScript()}
         aria-label="Nuevo guion"
       >
         <Plus aria-hidden="true" />
