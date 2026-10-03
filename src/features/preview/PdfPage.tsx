@@ -4,12 +4,16 @@
 // - Doble buffer por página: se rasteriza en un canvas temporal y se vuelca
 //   con `drawImage` de una vez — el canvas visible nunca queda en blanco y
 //   no hay flicker al actualizar tras cada debounce.
-// - Resolución: `scale * min(devicePixelRatio, 2)` para nitidez sin
+// - Resolución: `rasterScale * min(devicePixelRatio, 2)` para nitidez sin
 //   sobremuestrear en pantallas hi-dpi. El tamaño CSS lo fija `scale` solo.
 // - El espacio se reserva en cuanto se conocen las dimensiones (sin
 //   rasterizar), para no desplazar el scroll al aparecer cada página.
+// - Zoom fluido (REVIEW.md punto 3): el tamaño CSS sigue a `scale` al
+//   instante (reescalado proporcional síncrono), mientras el raster —caro—
+//   usa `useDeferredValue(scale)`: durante el gesto no se re-rasteriza,
+//   solo al asentar la escala. Una re-rasterización por gesto, no por tick.
 
-import { useEffect, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import type { RenderTask } from 'pdfjs-dist'
 import type { PdfDocument } from '@/lib/pdfjs'
 
@@ -26,6 +30,11 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
   const [inView, setInView] = useState(false)
   const [cssSize, setCssSize] = useState<{ w: number; h: number } | null>(null)
   const [failed, setFailed] = useState(false)
+  // Escala de raster diferida: el CSS crece por tick, el raster solo al
+  // asentar. `prevScaleRef` permite reescalar el tamaño conocido sin pasar
+  // por `pdf.getPage` (instantáneo y síncrono).
+  const rasterScale = useDeferredValue(scale)
+  const prevScaleRef = useRef(scale)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -39,6 +48,17 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
     io.observe(el)
     return () => io.disconnect()
   }, [])
+
+  // Tamaño CSS inmediato ante cada tick del gesto (sin rasterizar).
+  useEffect(() => {
+    const prev = prevScaleRef.current
+    prevScaleRef.current = scale
+    if (prev === scale || prev <= 0) return
+    const ratio = scale / prev
+    setCssSize((size) =>
+      size ? { w: size.w * ratio, h: size.h * ratio } : size,
+    )
+  }, [scale])
 
   useEffect(() => {
     if (!inView) return
@@ -54,11 +74,12 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
           return
         }
         const dpr = Math.min(window.devicePixelRatio || 1, 2)
-        const cssViewport = page.getViewport({ scale })
-        // Reserva el espacio antes de rasterizar (evita saltos de scroll).
+        const cssViewport = page.getViewport({ scale: rasterScale })
+        // Reserva/corrige el espacio con la medida absoluta (converge con
+        // el reescalado proporcional del efecto anterior).
         if (!cancelled)
           setCssSize({ w: cssViewport.width, h: cssViewport.height })
-        const viewport = page.getViewport({ scale: scale * dpr })
+        const viewport = page.getViewport({ scale: rasterScale * dpr })
         const tmp = document.createElement('canvas')
         tmp.width = Math.floor(viewport.width)
         tmp.height = Math.floor(viewport.height)
@@ -83,7 +104,7 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
       cancelled = true
       task?.cancel()
     }
-  }, [pdf, pageNumber, scale, inView])
+  }, [pdf, pageNumber, rasterScale, inView])
 
   return (
     <div

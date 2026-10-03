@@ -241,17 +241,48 @@ describe('PdfPreview', () => {
     await flush()
   })
 
-  it('Ctrl+rueda ajusta el zoom sin scroll global', async () => {
+  it('Ctrl+rueda ajusta el zoom sin scroll global ni snap', async () => {
     const pdf = makePdf(1)
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
     const scroller = screen.getByTestId('preview-pages')
     fireEvent.wheel(scroller, { ctrlKey: true, deltaY: -120 })
-    // Escala continua inmediata (el snap a 125% llega 200ms después).
-    await waitFor(() => expect(screen.queryByText('100 %')).toBeNull())
-    await waitFor(() => expect(screen.getByText('125 %')).toBeDefined(), {
-      timeout: 2000,
+    // Ganancia 0.004 con tope 1.4: 100 % → 140 % en una muesca, y el valor
+    // se queda (gesto libre, sin snap que lo revierta).
+    await waitFor(() => expect(screen.getByText('140 %')).toBeDefined())
+    await flush()
+  })
+
+  it('el pinch amplificado rinde en un solo gesto y persiste al soltar', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    const scroller = screen.getByTestId('preview-pages')
+    fireEvent.pointerDown(scroller, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 0,
+      clientY: 0,
     })
+    fireEvent.pointerDown(scroller, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 0,
+    })
+    // Síncrono al DOM: bloquea el gesto nativo sin esperar al re-render.
+    expect(scroller.style.touchAction).toBe('none')
+    fireEvent.pointerMove(scroller, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 150,
+      clientY: 0,
+    })
+    // 1.5^1.4 ≈ ×1.76 de una sola apertura (antes 1:1 + snap lo revertía).
+    expect(screen.getByText('176 %')).toBeDefined()
+    fireEvent.pointerUp(scroller, { pointerId: 1 })
+    fireEvent.pointerUp(scroller, { pointerId: 2 })
+    expect(scroller.style.touchAction).toBe('pan-x pan-y')
     await flush()
   })
 })

@@ -10,16 +10,17 @@
 //   (antes `maxWidth:100%` + `w-full` re-encogían la hoja a 150-200% y el
 //   zoom parecía no funcionar). El contenedor hace scroll en ambos ejes.
 // - Estado en `App` (`usePreviewZoom`): sobrevive al cambio de tab móvil y
-//   persiste en `store/uiStorage.ts`. Modelo discreto para botones, continuo
-//   durante el gesto con `snap` al soltar.
-// - Gestos sobre el contenedor de páginas: pinch de 2 dedos (Pointer Events),
-//   `Ctrl/Cmd+rueda` (pínch del trackpad en desktop), doble-clic para
-//   alternar 100% ↔ anterior.
+//   persiste en `store/uiStorage.ts`. Botones por escalones; gestos (pinch /
+//   Ctrl+rueda) libres y continuos, sin `snap`: el gesto deja la escala donde
+//   la deja el usuario y solo se persiste al asentarlo.
+// - Gestos sobre el contenedor de páginas: pinch de 2 dedos amplificado
+//   (×1.4, Pointer Events), `Ctrl/Cmd+rueda` (pellizco del trackpad en
+//   desktop), doble-clic para alternar 100% ↔ anterior.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
-import { clampZoom } from '@/hooks/usePreviewZoom'
+import { clampZoom, pinchScale, wheelFactor } from '@/hooks/usePreviewZoom'
 import { PdfPage } from './PdfPage'
 import type { PdfPreviewState } from './usePdfPreview'
 
@@ -56,29 +57,36 @@ export function PdfPreview({
   const pointersRef = useRef(new Map<number, { x: number; y: number }>())
   const pinchRef = useRef<PinchState | null>(null)
   const scaleRef = useRef(scale)
-  const wheelSnapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevScaleRef = useRef<number | null>(null)
-  const [pinching, setPinching] = useState(false)
+  // Espejo del hook para el listener nativo de rueda (suscripción única).
+  const zoomRef = useRef(zoom)
 
-  // Ref sincronizada para los handlers nativos (rueda) y de puntero, que
-  // viven fuera del render. Solo se escribe en efectos, nunca en el render.
+  // Refs sincronizadas para los handlers nativos (rueda) y de puntero, que
+  // viven fuera del render. Solo se escriben en efectos, nunca en el render.
   useEffect(() => {
     scaleRef.current = scale
     if (scale !== 1) prevScaleRef.current = scale
   }, [scale])
 
+  useEffect(() => {
+    zoomRef.current = zoom
+  })
+
   // `Ctrl/Cmd+rueda` sobre el contenedor (trackpad de desktop). Listener
   // no-pasivo para poder hacer `preventDefault` y que la página no haga
-  // zoom global ni scroll mientras se ajusta la escala.
+  // zoom global ni scroll mientras se ajusta la escala. Suscripción única:
+  // el hook se lee vía `zoomRef` porque su identidad cambia por render.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    let persistTimer: ReturnType<typeof setTimeout> | null = null
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
-      const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY
-      const factor = Math.min(1.25, Math.max(0.8, Math.exp(-delta * 0.002)))
-      const next = clampZoom(scaleRef.current * factor)
+      const z = zoomRef.current
+      const next = clampZoom(
+        scaleRef.current * wheelFactor(e.deltaY, e.deltaMode),
+      )
       const rect = el.getBoundingClientRect()
       const atX = e.clientX - rect.left
       const atY = e.clientY - rect.top
@@ -86,31 +94,32 @@ export function PdfPreview({
       if (ratio !== 1) {
         el.scrollLeft = (el.scrollLeft + atX) * ratio - atX
         el.scrollTop = (el.scrollTop + atY) * ratio - atY
-        zoom.setScale(next)
+        z.setScaleLive(next)
       }
-      // `snap` al escalón más cercano cuando cesa la ráfaga de rueda.
-      if (wheelSnapTimer.current !== null) clearTimeout(wheelSnapTimer.current)
-      wheelSnapTimer.current = setTimeout(() => {
-        wheelSnapTimer.current = null
-        zoom.snap()
-      }, 200)
+      // Se persiste al asentar la ráfaga, nunca por tick.
+      if (persistTimer !== null) clearTimeout(persistTimer)
+      persistTimer = setTimeout(() => {
+        persistTimer = null
+        zoomRef.current.commit()
+      }, 300)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => {
       el.removeEventListener('wheel', onWheel)
-      if (wheelSnapTimer.current !== null) {
-        clearTimeout(wheelSnapTimer.current)
-        wheelSnapTimer.current = null
+      if (persistTimer !== null) {
+        clearTimeout(persistTimer)
+        persistTimer = null
       }
     }
-  }, [zoom])
+  }, [])
 
-  const endPointer = (id: number) => {
+  const endPointer = (id: number, el: HTMLElement | null) => {
     pointersRef.current.delete(id)
     if (pointersRef.current.size < 2 && pinchRef.current) {
       pinchRef.current = null
-      setPinching(false)
-      zoom.snap()
+      // Restaura el scroll nativo de un dedo.
+      if (el) el.style.touchAction = 'pan-x pan-y'
+      zoom.commit()
     }
   }
 
@@ -200,9 +209,11 @@ export function PdfPreview({
         ref={scrollRef}
         data-testid="preview-pages"
         className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-sm border border-border bg-muted/30 p-4 sm:p-6"
-        // Solo un dedo hace scroll nativo; dos dedos (pinch) lo gestionamos
-        // nosotros con `touch-action:none` durante el gesto.
-        style={{ touchAction: pinching ? 'none' : 'pan-x pan-y' }}
+        // Un dedo hace scroll nativo (`pan-x pan-y`, sin zoom nativo); dos
+        // dedos los gestionamos nosotros y el `touch-action:none` se aplica
+        // síncrono al DOM en `onPointerDown` (sin esperar al re-render, o el
+        // navegador inicia su gesto nativo y nos aborta con `pointercancel`).
+        style={{ touchAction: 'pan-x pan-y' }}
         onPointerDown={(e) => {
           if (e.pointerType === 'mouse' && e.button !== 0) return
           pointersRef.current.set(e.pointerId, {
@@ -217,7 +228,7 @@ export function PdfPreview({
                 startDist,
                 startScale: scaleRef.current,
               }
-              setPinching(true)
+              e.currentTarget.style.touchAction = 'none'
             }
           }
         }}
@@ -232,8 +243,7 @@ export function PdfPreview({
           if (!pinch || !el || pointersRef.current.size !== 2) return
           const [a, b] = [...pointersRef.current.values()]
           const dist = pointerDistance(a, b)
-          if (dist <= 0 || pinch.startDist <= 0) return
-          const next = clampZoom((pinch.startScale * dist) / pinch.startDist)
+          const next = pinchScale(pinch.startScale, pinch.startDist, dist)
           // Ancla el punto medio entre los dedos para que el contenido
           // bajo ellos se quede quieto durante el gesto.
           const rect = el.getBoundingClientRect()
@@ -243,12 +253,12 @@ export function PdfPreview({
           if (ratio !== 1) {
             el.scrollLeft = (el.scrollLeft + midX) * ratio - midX
             el.scrollTop = (el.scrollTop + midY) * ratio - midY
-            zoom.setScale(next)
+            zoom.setScaleLive(next)
           }
-          // Sin `snap` hasta soltar (ver `onPointerUp`).
+          // Sin persistir hasta soltar (ver `endPointer`).
         }}
-        onPointerUp={(e) => endPointer(e.pointerId)}
-        onPointerCancel={(e) => endPointer(e.pointerId)}
+        onPointerUp={(e) => endPointer(e.pointerId, e.currentTarget)}
+        onPointerCancel={(e) => endPointer(e.pointerId, e.currentTarget)}
         onDoubleClick={() => {
           if (scaleRef.current !== 1) {
             prevScaleRef.current = scaleRef.current

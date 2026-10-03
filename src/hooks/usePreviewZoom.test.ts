@@ -1,13 +1,16 @@
-// src/hooks/usePreviewZoom.test.ts — modelo discreto + gestos continuos.
+// src/hooks/usePreviewZoom.test.ts — botones por escalones + gestos libres.
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  PINCH_GAIN,
   ZOOM_MAX,
   ZOOM_MIN,
   clampZoom,
+  pinchScale,
   snapZoom,
   usePreviewZoom,
+  wheelFactor,
 } from './usePreviewZoom'
 
 beforeEach(() => {
@@ -52,12 +55,26 @@ describe('usePreviewZoom', () => {
     expect(result.current.scale).toBe(1)
   })
 
-  it('setScale acepta continuo y snap lo redondea', () => {
+  it('setScaleLive no persiste hasta commit', () => {
     const { result } = renderHook(() => usePreviewZoom())
-    act(() => result.current.setScale(1.22))
+    act(() => result.current.setScaleLive(1.22))
     expect(result.current.scale).toBeCloseTo(1.22)
-    act(() => result.current.snap())
-    expect(result.current.scale).toBe(1.25)
+    // Un remontaje aún ve el valor anterior: el tick no persistió.
+    const { result: before } = renderHook(() => usePreviewZoom())
+    expect(before.current.scale).toBe(1)
+    act(() => result.current.commit())
+    const { result: after } = renderHook(() => usePreviewZoom())
+    expect(after.current.scale).toBeCloseTo(1.22)
+  })
+
+  it('el gesto libre conserva valores continuos (sin snap)', () => {
+    const { result } = renderHook(() => usePreviewZoom())
+    act(() => {
+      result.current.setScaleLive(1.13)
+      result.current.commit()
+    })
+    const { result: second } = renderHook(() => usePreviewZoom())
+    expect(second.current.scale).toBeCloseTo(1.13)
   })
 
   it('reset vuelve al 100% y persiste la escala', () => {
@@ -73,7 +90,6 @@ describe('usePreviewZoom', () => {
     const { result } = renderHook(() => usePreviewZoom())
     act(() => result.current.setScale(2))
     const { result: second } = renderHook(() => usePreviewZoom())
-    // `snap` en el arranque lo deja en el escalón exacto.
     expect(second.current.scale).toBe(2)
   })
 
@@ -85,5 +101,38 @@ describe('usePreviewZoom', () => {
     act(() => result.current.setScale(-5))
     expect(result.current.scale).toBe(ZOOM_MIN)
     expect(result.current.canZoomOut).toBe(false)
+  })
+})
+
+describe('pinchScale', () => {
+  it('aplica la ganancia sobre la razón de distancias', () => {
+    expect(pinchScale(1, 100, 150)).toBeCloseTo(Math.pow(1.5, PINCH_GAIN))
+    // Un gesto amplio de verdad rinde: 100→150px ≈ ×1.76.
+    expect(pinchScale(1, 100, 150)).toBeGreaterThan(1.7)
+    expect(pinchScale(1, 100, 100)).toBe(1)
+  })
+
+  it('reduce al cerrar los dedos y sujeta a los topes', () => {
+    expect(pinchScale(1, 150, 100)).toBeLessThan(1)
+    expect(pinchScale(1, 100, 10000)).toBe(ZOOM_MAX)
+    expect(pinchScale(1, 10000, 100)).toBe(ZOOM_MIN)
+  })
+
+  it('entradas inválidas → escala de partida sujetada', () => {
+    expect(pinchScale(1, 0, 150)).toBe(1)
+    expect(pinchScale(1, 100, -5)).toBe(1)
+    expect(pinchScale(NaN, 100, 150)).toBe(1)
+  })
+})
+
+describe('wheelFactor', () => {
+  it('muesca de rueda con Ctrl rinde más que antes (×~1.4)', () => {
+    expect(wheelFactor(-120, 0)).toBeCloseTo(1.4, 1)
+    expect(wheelFactor(120, 0)).toBeLessThan(0.75)
+  })
+
+  it('modo líneas (Firefox) se normaliza y el reposo es neutro', () => {
+    expect(wheelFactor(-3, 1)).toBeGreaterThan(1)
+    expect(wheelFactor(0, 0)).toBe(1)
   })
 })
