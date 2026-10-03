@@ -10,7 +10,7 @@
 // dual-pane con `ResizablePanelGroup`. Móvil: drawer lateral + tabs
 // Editor/Preview. Los tokens Warm/Cinematic (§8) quedan fuera.
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Menu,
   PanelLeftClose,
@@ -27,14 +27,11 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable'
+import { Separator } from '@/components/ui/separator'
 import { Editor } from '@/features/editor/Editor'
 import { PdfPreview } from '@/features/preview/PdfPreview'
 import { usePdfPreview } from '@/features/preview/usePdfPreview'
-import {
-  WarningsLive,
-  WarningsPanel,
-  WarningsTrigger,
-} from '@/features/preview/Warnings'
+import { Warnings } from '@/features/preview/Warnings'
 import { ImportButton } from '@/features/scripts/ImportButton'
 import { NewScriptDialog } from '@/features/scripts/NewScriptDialog'
 import { ScriptsDrawer } from '@/features/scripts/ScriptsDrawer'
@@ -45,9 +42,7 @@ import { usePreviewOpen } from '@/hooks/usePreviewOpen'
 import { usePreviewZoom } from '@/hooks/usePreviewZoom'
 import { useScripts } from '@/hooks/useScripts'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
-import { useWarningsOpen } from '@/hooks/useWarningsOpen'
 import { sanitizeFilename } from '@/lib/scripts'
-import type { Warning } from '@/vendor/fountain.mjs'
 
 type Tab = 'editor' | 'preview'
 
@@ -92,57 +87,6 @@ function StatusBadge({
   )
 }
 
-// Columna de editor a alto completo: el trigger de avisos vive en la
-// capitular (slot `headerAction`, 0px extra en reposo) y el panel cae como
-// hoja desde ella. `useId` por columna: móvil y desktop coexisten montados
-// (`md:hidden` / `hidden md:flex`), cada trigger apunta a su propio panel.
-function EditorColumn({
-  text,
-  disabled,
-  onChange,
-  warnings,
-  warningsOpen,
-  onWarningsOpenChange,
-}: {
-  text: string
-  disabled: boolean
-  onChange: (value: string) => void
-  warnings: Warning[]
-  warningsOpen: boolean
-  onWarningsOpenChange: (open: boolean) => void
-}) {
-  const panelId = useId()
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  return (
-    <div className="relative mx-auto flex min-h-0 w-full max-w-[70ch] flex-1 flex-col xl:max-w-[820px]">
-      <div className="min-h-0 flex-1">
-        <Editor
-          value={text}
-          onChange={onChange}
-          disabled={disabled}
-          headerAction={
-            <WarningsTrigger
-              ref={triggerRef}
-              warnings={warnings}
-              open={warningsOpen}
-              onOpenChange={onWarningsOpenChange}
-              panelId={panelId}
-            />
-          }
-        />
-      </div>
-      <WarningsLive warnings={warnings} />
-      <WarningsPanel
-        warnings={warnings}
-        open={warningsOpen}
-        onClose={() => onWarningsOpenChange(false)}
-        panelId={panelId}
-        triggerRef={triggerRef}
-      />
-    </div>
-  )
-}
-
 export default function App() {
   const {
     activeScript,
@@ -160,10 +104,6 @@ export default function App() {
   const zoom = usePreviewZoom()
   const { collapsed, toggle } = useSidebarCollapsed()
   const { open: previewOpen, toggle: togglePreview } = usePreviewOpen()
-  // REVIEW.md 4: avisos como notas al pie — tira dockada + panel flotante.
-  // `open` persiste en `guion.warnings.v1`; ante avisos nuevos solo se
-  // ilumina el badge (sin auto-apertura: taparía manuscrito).
-  const { open: warningsOpen, setOpen: setWarningsOpen } = useWarningsOpen()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const text = activeScript?.text ?? ''
@@ -338,14 +278,16 @@ export default function App() {
               ))}
             </div>
             {tab === 'editor' ? (
-              <EditorColumn
-                text={text}
-                disabled={booting}
-                onChange={handleChange}
-                warnings={warnings}
-                warningsOpen={warningsOpen}
-                onWarningsOpenChange={setWarningsOpen}
-              />
+              <div className="mx-auto flex min-h-0 w-full max-w-[70ch] flex-1 flex-col gap-3">
+                <div className="min-h-0 flex-1">
+                  <Editor
+                    value={text}
+                    onChange={handleChange}
+                    disabled={booting}
+                  />
+                </div>
+                <Warnings warnings={warnings} />
+              </div>
             ) : (
               <div className="min-h-0 flex-1">
                 <PdfPreview
@@ -372,15 +314,18 @@ export default function App() {
               {previewOpen ? (
                 <ResizablePanelGroup orientation="horizontal" className="p-4">
                   <ResizablePanel defaultSize={50} minSize={30}>
-                    <div className="flex h-full flex-col pr-2">
-                      <EditorColumn
-                        text={text}
-                        disabled={booting}
-                        onChange={handleChange}
-                        warnings={warnings}
-                        warningsOpen={warningsOpen}
-                        onWarningsOpenChange={setWarningsOpen}
-                      />
+                    <div className="flex h-full flex-col gap-3 pr-2">
+                      <div className="mx-auto flex min-h-0 w-full max-w-[70ch] flex-1 flex-col gap-3 xl:max-w-[820px]">
+                        <div className="min-h-0 flex-1">
+                          <Editor
+                            value={text}
+                            onChange={handleChange}
+                            disabled={booting}
+                          />
+                        </div>
+                        <Separator />
+                        <Warnings warnings={warnings} />
+                      </div>
                     </div>
                   </ResizablePanel>
                   <ResizableHandle withHandle />
@@ -397,14 +342,17 @@ export default function App() {
                 </ResizablePanelGroup>
               ) : (
                 <div className="h-full p-4">
-                  <EditorColumn
-                    text={text}
-                    disabled={booting}
-                    onChange={handleChange}
-                    warnings={warnings}
-                    warningsOpen={warningsOpen}
-                    onWarningsOpenChange={setWarningsOpen}
-                  />
+                  <div className="mx-auto flex h-full w-full max-w-[70ch] flex-col gap-3 xl:max-w-[820px]">
+                    <div className="min-h-0 flex-1">
+                      <Editor
+                        value={text}
+                        onChange={handleChange}
+                        disabled={booting}
+                      />
+                    </div>
+                    <Separator />
+                    <Warnings warnings={warnings} />
+                  </div>
                 </div>
               )}
             </div>

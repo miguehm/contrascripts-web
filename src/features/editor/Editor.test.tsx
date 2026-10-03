@@ -40,22 +40,4 @@ describe('Editor', () => {
     )
     expect(container.querySelector('[contenteditable="false"]')).toBeTruthy()
   })
-
-  it('sin headerAction la capitular va sola', () => {
-    const { container } = renderEditor()
-    expect(container.textContent).toContain('Fountain')
-  })
-
-  it('headerAction se monta a la derecha de la capitular', () => {
-    const { getByRole } = render(
-      <ThemeProvider>
-        <Editor
-          value="x"
-          onChange={vi.fn()}
-          headerAction={<button type="button">Acción</button>}
-        />
-      </ThemeProvider>,
-    )
-    expect(getByRole('button', { name: 'Acción' })).toBeDefined()
-  })
 })
