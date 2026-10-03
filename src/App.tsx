@@ -6,12 +6,12 @@
 // persiste con debounce (~500ms) + flush al salir/cambiar (§6).
 // La vista previa es el PDF generado por `fountain-pdf.wasm` en un Web
 // Worker (`usePdfPreview`), rasterizado con pdf.js: lo visible es lo que
-// se descarga. Desktop (>md): sidebar de guiones + dual-pane con
-// `ResizablePanelGroup`. Móvil: selector compacto en header + tabs
+// se descarga. Desktop (>md): sidebar de guiones colapsable a rail 56px +
+// dual-pane con `ResizablePanelGroup`. Móvil: drawer lateral + tabs
 // Editor/Preview. Los tokens Warm/Cinematic (§8) quedan fuera.
 
-import { useEffect, useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Menu, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
 import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -27,11 +27,12 @@ import { usePdfPreview } from '@/features/preview/usePdfPreview'
 import { Warnings } from '@/features/preview/Warnings'
 import { ImportButton } from '@/features/scripts/ImportButton'
 import { NewScriptDialog } from '@/features/scripts/NewScriptDialog'
-import { ScriptSwitcher } from '@/features/scripts/ScriptSwitcher'
+import { ScriptsDrawer } from '@/features/scripts/ScriptsDrawer'
 import { ScriptsSidebar } from '@/features/scripts/ScriptsSidebar'
 import { ExportButton } from '@/components/ExportButton'
 import { useParser } from '@/hooks/useParser'
 import { useScripts } from '@/hooks/useScripts'
+import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
 import { sanitizeFilename } from '@/lib/scripts'
 
 type Tab = 'editor' | 'preview'
@@ -91,6 +92,9 @@ export default function App() {
   } = useScripts()
   const [tab, setTab] = useState<Tab>('editor')
   const [previewPaused, setPreviewPaused] = useState(false)
+  const { collapsed, toggle } = useSidebarCollapsed()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
   const text = activeScript?.text ?? ''
   const { status, doc, warnings, retry } = useParser(text)
 
@@ -107,6 +111,16 @@ export default function App() {
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        toggle()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggle])
   const preview = usePdfPreview(text, {
     paused: previewPaused,
     visible: tab === 'preview' || isDesktop,
@@ -129,9 +143,40 @@ export default function App() {
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
+        <Button
+          ref={menuButtonRef}
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Abrir guiones"
+          aria-expanded={drawerOpen}
+          className="md:hidden"
+        >
+          <Menu aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggle}
+          aria-label={collapsed ? 'Expandir guiones' : 'Colapsar guiones'}
+          aria-expanded={!collapsed}
+          aria-controls="scripts-sidebar"
+          title={
+            collapsed
+              ? 'Expandir guiones (Ctrl+B)'
+              : 'Colapsar guiones (Ctrl+B)'
+          }
+          className="hidden md:inline-flex"
+        >
+          {collapsed ? (
+            <PanelLeftOpen aria-hidden="true" />
+          ) : (
+            <PanelLeftClose aria-hidden="true" />
+          )}
+        </Button>
         <h1 className="hidden text-[0.8125rem] font-medium md:inline">Guion</h1>
-        <span className="min-w-0 md:hidden">
-          <ScriptSwitcher />
+        <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium md:hidden">
+          {activeScript?.title ?? 'Sin guiones'}
         </span>
         <StatusBadge status={status} onRetry={retry} />
         <span className="ml-auto flex items-center gap-3">
@@ -200,8 +245,13 @@ export default function App() {
 
           {/* Desktop: sidebar + dual-pane */}
           <main className="hidden min-h-0 flex-1 md:flex">
-            <aside className="w-60 shrink-0 border-r border-border p-4">
-              <ScriptsSidebar />
+            <aside
+              id="scripts-sidebar"
+              className={`shrink-0 border-r border-border p-4 ${
+                collapsed ? 'w-14 px-2' : 'w-60'
+              }`}
+            >
+              <ScriptsSidebar collapsed={collapsed} />
             </aside>
             <div className="min-w-0 flex-1">
               <ResizablePanelGroup orientation="horizontal" className="p-4">
@@ -235,6 +285,11 @@ export default function App() {
       )}
 
       <Toaster />
+      <ScriptsDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        returnRef={menuButtonRef}
+      />
       <NewScriptDialog
         open={isNewOpen}
         suggestion={newSuggestion}

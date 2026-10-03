@@ -40,7 +40,13 @@ function formatDate(ts: number): string {
   })
 }
 
-export function ScriptsSidebar() {
+export function ScriptsSidebar({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean
+  onNavigate?: () => void
+}) {
   const {
     scripts,
     activeId,
@@ -73,6 +79,64 @@ export function ScriptsSidebar() {
     setDeleteTarget(null)
   }
 
+  const handleSelect = (id: string) => {
+    selectScript(id)
+    onNavigate?.()
+  }
+
+  const handleCreate = () => {
+    requestCreateScript()
+    onNavigate?.()
+  }
+
+  if (collapsed) {
+    return (
+      <section
+        aria-label="Guiones"
+        className="flex h-full flex-col items-center gap-2 overflow-hidden"
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={handleCreate}
+          aria-label="Nuevo guion"
+          title="Nuevo guion"
+        >
+          <Plus aria-hidden="true" />
+        </Button>
+        {scripts.length > 0 ? (
+          <ScrollArea className="min-h-0 flex-1">
+            <ul className="flex flex-col items-center gap-1">
+              {scripts.map((s) => {
+                const active = s.id === activeId
+                const initial = s.title.trim().charAt(0).toUpperCase() || '·'
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(s.id)}
+                      aria-current={active ? 'true' : undefined}
+                      aria-label={`Abrir guion ${s.title}`}
+                      title={s.title}
+                      className={`flex size-7 items-center justify-center rounded-sm border text-[0.8125rem] font-medium outline-none transition-colors focus-visible:border-ring ${
+                        active
+                          ? 'border-border border-l-2 border-l-primary bg-accent'
+                          : 'border-transparent hover:bg-accent/60'
+                      }`}
+                    >
+                      {initial}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </ScrollArea>
+        ) : null}
+        <ImportButton variant="ghost" size="icon-sm" />
+      </section>
+    )
+  }
+
   return (
     <section
       aria-label="Guiones"
@@ -88,7 +152,7 @@ export function ScriptsSidebar() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => requestCreateScript()}
+            onClick={handleCreate}
             aria-label="Nuevo guion"
           >
             <Plus aria-hidden="true" />
@@ -109,7 +173,7 @@ export function ScriptsSidebar() {
                 <li key={s.id} className="flex items-stretch gap-1">
                   <button
                     type="button"
-                    onClick={() => selectScript(s.id)}
+                    onClick={() => handleSelect(s.id)}
                     aria-current={active ? 'true' : undefined}
                     aria-label={`Abrir guion ${s.title}`}
                     className={`min-w-0 flex-1 rounded-sm border px-2 py-1.5 text-left outline-none transition-colors focus-visible:border-ring ${
