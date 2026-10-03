@@ -254,6 +254,9 @@ describe('PdfPreview', () => {
   })
 
   it('el pinch amplificado rinde en un solo gesto y confirma al soltar', async () => {
+    // Invariante: tamaño y scroll se resuelven en el mismo commit (el tamaño
+    // va en `useLayoutEffect` pre-paint en `PdfPage`); jsdom no observa el
+    // timing de pintado, así que el no-flash se verifica manual, no aquí.
     const pdf = makePdf(1)
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')

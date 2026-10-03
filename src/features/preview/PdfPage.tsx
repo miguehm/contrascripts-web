@@ -13,7 +13,13 @@
 //   usa `useDeferredValue(scale)`: durante el gesto no se re-rasteriza,
 //   solo al asentar la escala. Una re-rasterización por gesto, no por tick.
 
-import { useDeferredValue, useEffect, useRef, useState } from 'react'
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { RenderTask } from 'pdfjs-dist'
 import type { PdfDocument } from '@/lib/pdfjs'
 
@@ -49,8 +55,14 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
     return () => io.disconnect()
   }, [])
 
-  // Tamaño CSS inmediato ante cada tick del gesto (sin rasterizar).
-  useEffect(() => {
+  // Tamaño CSS inmediato ante cada cambio de escala (sin rasterizar).
+  // Es `useLayoutEffect` a propósito, no `useEffect`: el commit del gesto
+  // retira el transform y cambia `scale` en el mismo batch, y la corrección
+  // de scroll de `PdfPreview` también corre pre-paint. Si el tamaño se
+  // resolviera en un efecto pasivo, la primera frame tras soltar pintaría la
+  // hoja en tamaño viejo con el scroll ya corregido (brinco visible); así,
+  // el re-render con el tamaño nuevo también ocurre antes de pintar.
+  useLayoutEffect(() => {
     const prev = prevScaleRef.current
     prevScaleRef.current = scale
     if (prev === scale || prev <= 0) return
