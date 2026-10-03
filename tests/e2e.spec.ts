@@ -2,7 +2,19 @@
 // raster con pdf.js, exportar PDF desde el caché y persistencia.
 // El contenido del guion vive en <canvas>: se aserta por páginas
 // (aria-label "Página N de M"), no por texto.
+//
+// El editor es CodeMirror (contenteditable `.cm-content`, no `<textarea>`):
+// para escribir se hace click + seleccionar todo + `insertText` (una sola
+// transacción, dispara `onChange` una vez).
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
+
+async function writeScript(page: Page, text: string): Promise<void> {
+  const editor = page.locator('.cm-content:visible')
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.insertText(text)
+}
 
 test('boot único + preview PDF del seed', async ({ page }) => {
   await page.goto('/')
@@ -32,7 +44,9 @@ test('editar actualiza el preview PDF', async ({ page }) => {
   const longText =
     'INT. CASA - DÍA\n\n' +
     'Línea de acción para rellenar la página.\n\n'.repeat(60)
-  await page.locator('textarea:visible').fill(longText)
+  await writeScript(page, longText)
+  // El gutter de CodeMirror confirma que el editor nuevo montó.
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
   await expect(page.getByRole('img', { name: /Página 2 de/ })).toBeVisible({
     timeout: 30_000,
   })
@@ -74,7 +88,7 @@ test('persistencia tras recarga', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
   const marker = `PERSIST-${Date.now()}`
-  await page.locator('textarea:visible').fill(`INT. CASA - DÍA\n\n${marker}\n`)
+  await writeScript(page, `INT. CASA - DÍA\n\n${marker}\n`)
   await expect
     .poll(
       async () =>
@@ -87,5 +101,5 @@ test('persistencia tras recarga', async ({ page }) => {
     .toBe(true)
   await page.reload()
   await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('textarea:visible')).toContainText(marker)
+  await expect(page.locator('.cm-content:visible')).toContainText(marker)
 })
