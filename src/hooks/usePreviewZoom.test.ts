@@ -166,7 +166,7 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     act(() => result.current.resetForScript())
     expect(result.current.fitMode).toBe(true)
     expect(result.current.scale).toBe(1)
-    expect(result.current.fitScale).toBeNull()
+    expect(result.current.fitScale).toBe(0.5)
   })
 
   it('effectiveScale usa el fit medido mientras fitMode siga activo', () => {

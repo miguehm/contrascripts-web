@@ -262,7 +262,9 @@ export function usePreviewZoom(options?: {
     const fit = options?.fitDefault ?? false
     fitModeRef.current = fit
     setFitModeState(fit)
-    setFitScaleState(null)
+    // Se conserva el último `fitScale`: el preview no se desmonta al cambiar
+    // de documento y re-medir solo ocurre en resize; con el ancho típico
+    // igual, el fit aplica desde el primer frame.
     scaleRef.current = DEFAULT_ZOOM
     setScaleState(DEFAULT_ZOOM)
   }, [options?.fitDefault])
