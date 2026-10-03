@@ -3,8 +3,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   UNTITLED,
+  filterScriptsByTitle,
   newId,
   newScript,
+  normalizeTitle,
   sanitizeFilename,
   titleFromFilename,
 } from '@/lib/scripts'
@@ -61,5 +63,42 @@ describe('titleFromFilename', () => {
   it('ignora directorios y cae a "Sin título" sin base útil', () => {
     expect(titleFromFilename('docs/mi guion.fountain')).toBe('mi guion')
     expect(titleFromFilename('.fountain')).toBe(UNTITLED)
+  })
+})
+
+describe('normalizeTitle', () => {
+  it('minúsculas, trim y sin tildes', () => {
+    expect(normalizeTitle('  Canción Final ')).toBe('cancion final')
+    expect(normalizeTitle('BRICK & STEEL')).toBe('brick & steel')
+  })
+})
+
+describe('filterScriptsByTitle', () => {
+  it('query vacía devuelve la lista tal cual', () => {
+    const scripts = [newScript('Alpha'), newScript('Beta')]
+    expect(filterScriptsByTitle(scripts, '')).toBe(scripts)
+    expect(filterScriptsByTitle(scripts, '   ')).toBe(scripts)
+  })
+
+  it('filtra por substring insensible a mayúsculas y tildes', () => {
+    const scripts = [
+      newScript('Canción final'),
+      newScript('Brick & Steel'),
+      newScript('casa de campo'),
+    ]
+    expect(
+      filterScriptsByTitle(scripts, 'cancion').map((s) => s.title),
+    ).toEqual(['Canción final'])
+    expect(filterScriptsByTitle(scripts, 'BRICK').map((s) => s.title)).toEqual([
+      'Brick & Steel',
+    ])
+    expect(
+      filterScriptsByTitle(scripts, '  casa ').map((s) => s.title),
+    ).toEqual(['casa de campo'])
+  })
+
+  it('sin coincidencias devuelve lista vacía', () => {
+    const scripts = [newScript('Alpha')]
+    expect(filterScriptsByTitle(scripts, 'zzz')).toEqual([])
   })
 })

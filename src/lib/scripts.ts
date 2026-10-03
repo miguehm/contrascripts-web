@@ -56,3 +56,28 @@ export function titleFromFilename(name: string): string {
   const withoutExt = base.replace(/\.(fountain|txt)$/i, '').trim()
   return withoutExt === '' ? UNTITLED : withoutExt
 }
+
+/**
+ * Normaliza para búsqueda por título: trim + minúsculas + sin diacríticos
+ * (`Canción` → `cancion`). Así `cancion` encuentra `Canción`.
+ */
+export function normalizeTitle(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+/**
+ * Filtra guiones por título (substring, insensible a mayúsculas/tildes).
+ * Query vacía o solo espacios → devuelve la lista tal cual.
+ */
+export function filterScriptsByTitle(
+  scripts: Script[],
+  query: string,
+): Script[] {
+  const q = normalizeTitle(query)
+  if (q === '') return scripts
+  return scripts.filter((s) => normalizeTitle(s.title).includes(q))
+}
