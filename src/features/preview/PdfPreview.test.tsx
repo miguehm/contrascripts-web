@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PdfPreview } from './PdfPreview'
+import { usePreviewZoom } from '@/hooks/usePreviewZoom'
 import type { PdfPreviewState } from './usePdfPreview'
 import type { PdfDocument } from '@/lib/pdfjs'
 
@@ -48,6 +49,27 @@ function makePreview(
   }
 }
 
+/** Harness con el hook real: los botones/pinch mutan la escala de verdad. */
+function Harness({
+  preview,
+  paused = false,
+  onPausedChange = () => {},
+}: {
+  preview: PdfPreviewState
+  paused?: boolean
+  onPausedChange?: () => void
+}) {
+  const zoom = usePreviewZoom()
+  return (
+    <PdfPreview
+      preview={preview}
+      paused={paused}
+      onPausedChange={onPausedChange}
+      zoom={zoom}
+    />
+  )
+}
+
 class FakeObserver {
   cb: IntersectionObserverCallback
   constructor(cb: IntersectionObserverCallback) {
@@ -65,6 +87,21 @@ class FakeObserver {
 
 beforeEach(() => {
   drawImage.mockClear()
+  // jsdom sin URL es origen opaco (sin localStorage real): stub en memoria
+  // para que `usePreviewZoom` arranque siempre al 100%.
+  const store: Record<string, string> = {}
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn((k: string) => (k in store ? store[k] : null)),
+    setItem: vi.fn((k: string, v: string) => {
+      store[k] = v
+    }),
+    removeItem: vi.fn((k: string) => {
+      delete store[k]
+    }),
+    clear: vi.fn(() => {
+      for (const k of Object.keys(store)) delete store[k]
+    }),
+  })
   vi.stubGlobal(
     'IntersectionObserver',
     FakeObserver as unknown as typeof IntersectionObserver,
@@ -87,13 +124,7 @@ async function flush() {
 describe('PdfPreview', () => {
   it('renderiza un canvas por página del PDF', async () => {
     const pdf = makePdf(2)
-    render(
-      <PdfPreview
-        preview={makePreview({ pdf, numPages: 2 })}
-        paused={false}
-        onPausedChange={() => {}}
-      />,
-    )
+    render(<Harness preview={makePreview({ pdf, numPages: 2 })} />)
     expect(await screen.findByLabelText('Página 1 de 2')).toBeDefined()
     expect(screen.getByLabelText('Página 2 de 2')).toBeDefined()
     await waitFor(() => expect(drawImage).toHaveBeenCalledTimes(2))
@@ -102,10 +133,8 @@ describe('PdfPreview', () => {
   it('mientras actualiza conserva las páginas y avisa', () => {
     const pdf = makePdf(1)
     render(
-      <PdfPreview
+      <Harness
         preview={makePreview({ status: 'rendering', pdf, numPages: 1 })}
-        paused={false}
-        onPausedChange={() => {}}
       />,
     )
     expect(screen.getByText('Actualizando…')).toBeDefined()
@@ -113,23 +142,15 @@ describe('PdfPreview', () => {
   })
 
   it('sin PDF muestra el placeholder de generación', () => {
-    render(
-      <PdfPreview
-        preview={makePreview({ status: 'rendering' })}
-        paused={false}
-        onPausedChange={() => {}}
-      />,
-    )
+    render(<Harness preview={makePreview({ status: 'rendering' })} />)
     expect(screen.getByText('Generando vista previa…')).toBeDefined()
   })
 
   it('en error sin PDF ofrece reintentar', () => {
     const renderNow = vi.fn()
     render(
-      <PdfPreview
+      <Harness
         preview={makePreview({ status: 'error', error: 'boom', renderNow })}
-        paused={false}
-        onPausedChange={() => {}}
       />,
     )
     expect(screen.getByText('boom')).toBeDefined()
@@ -139,21 +160,16 @@ describe('PdfPreview', () => {
 
   it('en pausa sin PDF lo indica y con PDF ofrece actualizar', () => {
     const { unmount } = render(
-      <PdfPreview
-        preview={makePreview({ status: 'idle' })}
-        paused={true}
-        onPausedChange={() => {}}
-      />,
+      <Harness preview={makePreview({ status: 'idle' })} paused={true} />,
     )
     expect(screen.getByText('Vista previa en pausa.')).toBeDefined()
     unmount()
 
     const renderNow = vi.fn()
     render(
-      <PdfPreview
+      <Harness
         preview={makePreview({ pdf: makePdf(1), numPages: 1, renderNow })}
         paused={true}
-        onPausedChange={() => {}}
       />,
     )
     fireEvent.click(screen.getByText('Actualizar ahora'))
@@ -163,16 +179,12 @@ describe('PdfPreview', () => {
   it('el toggle de pausa notifica al padre', () => {
     const onPausedChange = vi.fn()
     const { rerender } = render(
-      <PdfPreview
-        preview={makePreview()}
-        paused={false}
-        onPausedChange={onPausedChange}
-      />,
+      <Harness preview={makePreview()} onPausedChange={onPausedChange} />,
     )
     fireEvent.click(screen.getByLabelText('Pausar vista previa'))
     expect(onPausedChange).toHaveBeenCalledWith(true)
     rerender(
-      <PdfPreview
+      <Harness
         preview={makePreview()}
         paused={true}
         onPausedChange={onPausedChange}
@@ -182,21 +194,64 @@ describe('PdfPreview', () => {
     expect(onPausedChange).toHaveBeenCalledWith(false)
   })
 
-  it('el zoom re-rasteriza las páginas visibles', async () => {
+  it('el zoom re-rasteriza y cambia el tamaño real de la hoja', async () => {
     const pdf = makePdf(2)
-    render(
-      <PdfPreview
-        preview={makePreview({ pdf, numPages: 2 })}
-        paused={false}
-        onPausedChange={() => {}}
-      />,
-    )
-    await screen.findByLabelText('Página 1 de 2')
+    render(<Harness preview={makePreview({ pdf, numPages: 2 })} />)
+    const canvas = (await screen.findByLabelText(
+      'Página 1 de 2',
+    )) as unknown as HTMLElement
     await waitFor(() => expect(drawImage).toHaveBeenCalledTimes(2))
     expect(screen.getByText('100 %')).toBeDefined()
+    const before = canvas.style.width
+    expect(before).toBe('612px')
     fireEvent.click(screen.getByLabelText('Ampliar zoom'))
     expect(screen.getByText('125 %')).toBeDefined()
+    // La hoja crece de verdad (antes maxWidth:100% la re-encogía).
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText('Página 1 de 2') as unknown as HTMLElement).style
+          .width,
+      ).toBe('765px'),
+    )
     await waitFor(() => expect(drawImage).toHaveBeenCalledTimes(4))
+    await flush()
+  })
+
+  it('el indicador de porcentaje restablece al 100%', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+    expect(screen.getByText('125 %')).toBeDefined()
+    fireEvent.click(screen.getByText('125 %'))
+    expect(screen.getByText('100 %')).toBeDefined()
+    await flush()
+  })
+
+  it('doble-clic alterna 100% y anterior', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+    expect(screen.getByText('125 %')).toBeDefined()
+    fireEvent.doubleClick(screen.getByTestId('preview-pages'))
+    expect(screen.getByText('100 %')).toBeDefined()
+    fireEvent.doubleClick(screen.getByTestId('preview-pages'))
+    expect(screen.getByText('125 %')).toBeDefined()
+    await flush()
+  })
+
+  it('Ctrl+rueda ajusta el zoom sin scroll global', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    const scroller = screen.getByTestId('preview-pages')
+    fireEvent.wheel(scroller, { ctrlKey: true, deltaY: -120 })
+    // Escala continua inmediata (el snap a 125% llega 200ms después).
+    await waitFor(() => expect(screen.queryByText('100 %')).toBeNull())
+    await waitFor(() => expect(screen.getByText('125 %')).toBeDefined(), {
+      timeout: 2000,
+    })
     await flush()
   })
 })

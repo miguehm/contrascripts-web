@@ -88,15 +88,21 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
   return (
     <div
       ref={wrapRef}
+      data-page={pageNumber}
       className="mx-auto bg-[var(--paper)] shadow-[0_4px_20px_-2px_rgba(15,23,42,0.05),0_1px_3px_rgba(15,23,42,0.03)] dark:shadow-[0_2px_4px_rgba(0,0,0,0.2),0_16px_40px_rgba(0,0,0,0.4)]"
       style={
         cssSize
           ? {
+              // REVIEW.md 3: el ancho lo manda `scale` sin tope del
+              // contenedor (`maxWidth:100%` + `w-full` re-encogía la hoja
+              // a 150-200% y el zoom parecía no funcionar). El scroll
+              // horizontal lo gestiona el contenedor de `PdfPreview`.
               width: cssSize.w,
-              maxWidth: '100%',
+              maxWidth: 'none',
+              flexShrink: 0,
               aspectRatio: `${cssSize.w} / ${cssSize.h}`,
             }
-          : { minHeight: 200 }
+          : { minHeight: 200, minWidth: 200 }
       }
     >
       {failed ? (
@@ -108,7 +114,8 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
           ref={canvasRef}
           role="img"
           aria-label={`Página ${pageNumber} de ${numPages}`}
-          className="block h-auto w-full"
+          className="block"
+          style={cssSize ? { width: cssSize.w, height: cssSize.h } : undefined}
         />
       )}
     </div>
