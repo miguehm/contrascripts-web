@@ -44,7 +44,7 @@ export function ScriptsSidebar() {
   const {
     scripts,
     activeId,
-    createScript,
+    requestCreateScript,
     renameScript,
     removeScript,
     selectScript,
@@ -88,7 +88,7 @@ export function ScriptsSidebar() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => createScript()}
+            onClick={() => requestCreateScript()}
             aria-label="Nuevo guion"
           >
             <Plus aria-hidden="true" />

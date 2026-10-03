@@ -26,6 +26,7 @@ import { PdfPreview } from '@/features/preview/PdfPreview'
 import { usePdfPreview } from '@/features/preview/usePdfPreview'
 import { Warnings } from '@/features/preview/Warnings'
 import { ImportButton } from '@/features/scripts/ImportButton'
+import { NewScriptDialog } from '@/features/scripts/NewScriptDialog'
 import { ScriptSwitcher } from '@/features/scripts/ScriptSwitcher'
 import { ScriptsSidebar } from '@/features/scripts/ScriptsSidebar'
 import { ExportButton } from '@/components/ExportButton'
@@ -79,7 +80,15 @@ function StatusBadge({
 }
 
 export default function App() {
-  const { activeScript, updateText, createScript } = useScripts()
+  const {
+    activeScript,
+    updateText,
+    requestCreateScript,
+    isNewOpen,
+    newSuggestion,
+    confirmNewScript,
+    cancelNewScript,
+  } = useScripts()
   const [tab, setTab] = useState<Tab>('editor')
   const [previewPaused, setPreviewPaused] = useState(false)
   const text = activeScript?.text ?? ''
@@ -141,7 +150,7 @@ export default function App() {
             empezar.
           </p>
           <span className="flex items-center gap-2">
-            <Button onClick={() => createScript()} className="h-8">
+            <Button onClick={() => requestCreateScript()} className="h-8">
               <Plus aria-hidden="true" />
               Nuevo guion
             </Button>
@@ -226,6 +235,14 @@ export default function App() {
       )}
 
       <Toaster />
+      <NewScriptDialog
+        open={isNewOpen}
+        suggestion={newSuggestion}
+        onConfirm={confirmNewScript}
+        onOpenChange={(open) => {
+          if (!open) cancelNewScript()
+        }}
+      />
     </div>
   )
 }

@@ -16,9 +16,11 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from 'react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
+import { uniqueScriptName } from '@/lib/names'
 import { SAMPLE_FOUNTAIN } from '@/lib/sample'
 import { newScript } from '@/lib/scripts'
 import type { Script } from '@/types/Script'
@@ -33,6 +35,13 @@ export interface ScriptsContextValue extends ScriptsState {
   /** Guion activo (o `null` si la lista está vacía). */
   activeScript: Script | null
   createScript: (title?: string, text?: string) => void
+  /** Abre el modal "Nuevo guion" (REVIEW-1); cancelar no crea nada. */
+  requestCreateScript: () => void
+  /** Estado del modal global de creación. */
+  isNewOpen: boolean
+  newSuggestion: string
+  confirmNewScript: (title: string) => void
+  cancelNewScript: () => void
   importScript: (title: string, text: string) => void
   renameScript: (id: string, title: string) => void
   removeScript: (id: string) => void
@@ -58,6 +67,8 @@ export function ScriptsProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(scriptsReducer, undefined, initState)
   const stateRef = useRef(state)
   const timerRef = useRef<number | null>(null)
+  const [isNewOpen, setIsNewOpen] = useState(false)
+  const [newSuggestion, setNewSuggestion] = useState('')
 
   // Ref sincronizada en efecto (no en render, ver react-hooks/refs):
   // declarado antes del autosave para que el timer lea el estado nuevo.
@@ -129,6 +140,17 @@ export function ScriptsProvider({ children }: { children: ReactNode }) {
       activeScript,
       createScript: (title?: string, text?: string) =>
         dispatch({ type: 'create', title, text }),
+      requestCreateScript: () => {
+        setNewSuggestion(uniqueScriptName(state.scripts.map((s) => s.title)))
+        setIsNewOpen(true)
+      },
+      isNewOpen,
+      newSuggestion,
+      confirmNewScript: (title: string) => {
+        dispatch({ type: 'create', title })
+        setIsNewOpen(false)
+      },
+      cancelNewScript: () => setIsNewOpen(false),
       importScript: (title: string, text: string) =>
         dispatch({ type: 'import', title, text }),
       renameScript: (id: string, title: string) =>
@@ -139,7 +161,7 @@ export function ScriptsProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'updateText', id, text }),
       flush: persistNow,
     }
-  }, [state, removeScript, selectScript, persistNow])
+  }, [state, isNewOpen, newSuggestion, removeScript, selectScript, persistNow])
 
   return (
     <ScriptsContext.Provider value={value}>{children}</ScriptsContext.Provider>
