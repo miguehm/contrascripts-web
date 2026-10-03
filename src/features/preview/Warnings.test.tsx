@@ -119,4 +119,39 @@ describe('WarningsPanel', () => {
     fireEvent.pointerDown(screen.getByText('Falta algo'), { bubbles: true })
     expect(onClose).not.toHaveBeenCalled()
   })
+
+  it('clic en el trigger (misma u otra columna) no dispara el cierre', () => {
+    // Regresión: móvil y desktop coexisten montados con distinto `panelId`.
+    // El `pointerdown` del panel ajeno cerraba y el `click` posterior
+    // reabría con `open` obsoleto: el panel no se llegaba a cerrar nunca.
+    const onClose = vi.fn()
+    render(
+      <>
+        <WarningsTrigger
+          warnings={SAMPLE}
+          open={true}
+          onOpenChange={() => {}}
+          panelId="panel-a"
+        />
+        <WarningsTrigger
+          warnings={SAMPLE}
+          open={true}
+          onOpenChange={() => {}}
+          panelId="panel-b"
+        />
+        <WarningsPanel
+          warnings={SAMPLE}
+          open={true}
+          onClose={onClose}
+          panelId="panel-a"
+          triggerRef={{ current: null }}
+        />
+      </>,
+    )
+    const triggers = screen.getAllByRole('button', { name: /avisos/i })
+    expect(triggers).toHaveLength(2)
+    fireEvent.pointerDown(triggers[0], { bubbles: true })
+    fireEvent.pointerDown(triggers[1], { bubbles: true })
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })
