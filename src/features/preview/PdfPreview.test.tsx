@@ -158,7 +158,7 @@ describe('PdfPreview', () => {
         preview={makePreview({ status: 'rendering', pdf, numPages: 1 })}
       />,
     )
-    expect(screen.getByText('Actualizando…')).toBeDefined()
+    expect(screen.getByText('Actualizando documento…')).toBeDefined()
     expect(screen.getByLabelText('Página 1 de 1')).toBeDefined()
   })
 
@@ -555,5 +555,44 @@ describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
     fireEvent.doubleClick(screen.getByTestId('preview-pages'))
     expect(screen.getByText('125 %')).toBeDefined()
     await flush()
+  })
+})
+
+describe('banner de procesamiento (REVIEW.md punto 2, móvil)', () => {
+  it('sin PDF muestra "Procesando documento…" con role status', () => {
+    render(<Harness preview={makePreview({ status: 'rendering' })} />)
+    const banner = screen.getByText('Procesando documento…')
+    expect(banner.closest('[role="status"]')).not.toBeNull()
+    // Flotante: no empuja el documento (clase absolute, no flujo normal).
+    expect(banner.closest('[role="status"]')!.className).toContain('absolute')
+  })
+
+  it('con PDF previo muestra "Actualizando documento…"', () => {
+    const pdf = makePdf(1)
+    render(
+      <Harness
+        preview={makePreview({ status: 'rendering', pdf, numPages: 1 })}
+      />,
+    )
+    expect(screen.getByText('Actualizando documento…')).toBeDefined()
+  })
+
+  it('no aparece cuando está listo ni en error ni en pausa', () => {
+    const { unmount } = render(
+      <Harness preview={makePreview({ pdf: makePdf(1), numPages: 1 })} />,
+    )
+    expect(screen.queryByText('Actualizando documento…')).toBeNull()
+    unmount()
+
+    const { unmount: u2 } = render(
+      <Harness preview={makePreview({ status: 'error', error: 'boom' })} />,
+    )
+    expect(screen.queryByText('Procesando documento…')).toBeNull()
+    u2()
+
+    render(
+      <Harness preview={makePreview({ status: 'rendering' })} paused={true} />,
+    )
+    expect(screen.queryByText('Procesando documento…')).toBeNull()
   })
 })

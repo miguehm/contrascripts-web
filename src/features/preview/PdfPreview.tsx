@@ -39,7 +39,7 @@ import {
   useState,
 } from 'react'
 import { Button } from '@/components/ui/button'
-import { Maximize2, Minimize2 } from 'lucide-react'
+import { Loader2, Maximize2, Minimize2 } from 'lucide-react'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
 import {
   FIT_MIN,
@@ -151,7 +151,6 @@ export function PdfPreview({
     setFitMode,
     setFitScale,
   } = zoom
-  const updating = status === 'rendering' && pdf !== null
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const docWrapRef = useRef<HTMLDivElement | null>(null)
@@ -432,14 +431,6 @@ export function PdfPreview({
           Vista previa
         </h2>
         <span className="ml-auto flex items-center gap-1">
-          {updating ? (
-            <span
-              role="status"
-              className="px-1 font-mono text-[10px] text-muted-foreground uppercase"
-            >
-              Actualizando…
-            </span>
-          ) : null}
           <Button
             size="xs"
             variant="ghost"
@@ -548,160 +539,182 @@ export function PdfPreview({
         </div>
       ) : null}
 
-      <div
-        ref={scrollRef}
-        data-testid="preview-pages"
-        className="scroll-slim min-h-0 flex-1 overflow-auto overscroll-contain rounded-sm border border-border bg-muted/30 p-4 sm:p-6"
-        // Un dedo hace scroll nativo (`pan-x pan-y`, sin zoom nativo); los
-        // gestos propios ponen `touch-action:none` síncrono al DOM en
-        // `onPointerDown` (sin esperar al re-render, o el navegador inicia
-        // su gesto nativo y nos aborta con `pointercancel`).
-        style={{ touchAction: 'pan-x pan-y' }}
-        onPointerDown={(e) => {
-          if (e.pointerType === 'mouse' && e.button !== 0) return
-          pointersRef.current.set(e.pointerId, {
-            x: e.clientX,
-            y: e.clientY,
-            sx: e.clientX,
-            sy: e.clientY,
-          })
-          if (pointersRef.current.size === 2) {
-            // El pinch toma precedencia: confirma cualquier gesto en curso
-            // (arrastre o ráfaga de rueda) y arranca desde la escala
-            // resultante, cancelando su timer pendiente.
-            let base = scaleRef.current
-            if (gestureRef.current) {
-              dragRef.current = null
-              const committed = commitGesture()
-              if (committed !== null) base = committed
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {/* Punto 2: barra flotante (superpuesta, sin desplazar el
+            documento) mientras el worker/pdf.js procesa. Con PDF previo
+            indica re-render; sin él, cubre también el arranque (idle). */}
+        {status !== 'error' &&
+        (status === 'rendering' || pdf === null) &&
+        !paused ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 rounded-t-sm border-b border-border bg-muted/90 px-2 py-1 text-[0.6875rem] text-muted-foreground shadow-sm backdrop-blur-sm"
+          >
+            <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+            {pdf ? 'Actualizando documento…' : 'Procesando documento…'}
+          </div>
+        ) : null}
+
+        <div
+          ref={scrollRef}
+          data-testid="preview-pages"
+          className="scroll-slim min-h-0 flex-1 overflow-auto overscroll-contain rounded-sm border border-border bg-muted/30 p-4 sm:p-6"
+          // Un dedo hace scroll nativo (`pan-x pan-y`, sin zoom nativo); los
+          // gestos propios ponen `touch-action:none` síncrono al DOM en
+          // `onPointerDown` (sin esperar al re-render, o el navegador inicia
+          // su gesto nativo y nos aborta con `pointercancel`).
+          style={{ touchAction: 'pan-x pan-y' }}
+          onPointerDown={(e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return
+            pointersRef.current.set(e.pointerId, {
+              x: e.clientX,
+              y: e.clientY,
+              sx: e.clientX,
+              sy: e.clientY,
+            })
+            if (pointersRef.current.size === 2) {
+              // El pinch toma precedencia: confirma cualquier gesto en curso
+              // (arrastre o ráfaga de rueda) y arranca desde la escala
+              // resultante, cancelando su timer pendiente.
+              let base = scaleRef.current
+              if (gestureRef.current) {
+                dragRef.current = null
+                const committed = commitGesture()
+                if (committed !== null) base = committed
+              }
+              const [a, b] = [...pointersRef.current.values()]
+              const startDist = pointerDistance(a, b)
+              if (startDist > 0) {
+                pinchRef.current = { startDist }
+                const init = startCapture(
+                  (a.x + b.x) / 2,
+                  (a.y + b.y) / 2,
+                  base,
+                )
+                if (init) {
+                  gestureRef.current = init
+                  setGestureState(init)
+                }
+                e.currentTarget.style.touchAction = 'none'
+                tapRef.current = null
+              }
+              return
             }
-            const [a, b] = [...pointersRef.current.values()]
-            const startDist = pointerDistance(a, b)
-            if (startDist > 0) {
-              pinchRef.current = { startDist }
-              const init = startCapture((a.x + b.x) / 2, (a.y + b.y) / 2, base)
+            // Candidato a doble-tap-arrastrar: segundo toque rápido y cercano.
+            const tap = tapRef.current
+            if (
+              pointersRef.current.size === 1 &&
+              !pinchRef.current &&
+              tap &&
+              Date.now() - tap.t < TAP_TIMEOUT &&
+              Date.now() > pinchEndRef.current + PINCH_TAP_SUPPRESS &&
+              Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_MAX_DIST
+            ) {
+              // Si había una ráfaga de rueda a medias, se confirma primero.
+              let base = scaleRef.current
+              if (gestureRef.current) {
+                const committed = commitGesture()
+                if (committed !== null) base = committed
+              }
+              const init = startCapture(e.clientX, e.clientY, base)
               if (init) {
+                dragRef.current = { startY: e.clientY }
+                tapRef.current = null
                 gestureRef.current = init
                 setGestureState(init)
+                e.currentTarget.style.touchAction = 'none'
               }
-              e.currentTarget.style.touchAction = 'none'
-              tapRef.current = null
             }
-            return
-          }
-          // Candidato a doble-tap-arrastrar: segundo toque rápido y cercano.
-          const tap = tapRef.current
-          if (
-            pointersRef.current.size === 1 &&
-            !pinchRef.current &&
-            tap &&
-            Date.now() - tap.t < TAP_TIMEOUT &&
-            Date.now() > pinchEndRef.current + PINCH_TAP_SUPPRESS &&
-            Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < TAP_MAX_DIST
-          ) {
-            // Si había una ráfaga de rueda a medias, se confirma primero.
-            let base = scaleRef.current
-            if (gestureRef.current) {
-              const committed = commitGesture()
-              if (committed !== null) base = committed
+          }}
+          onPointerMove={(e) => {
+            const tracked = pointersRef.current.get(e.pointerId)
+            if (!tracked) return
+            tracked.x = e.clientX
+            tracked.y = e.clientY
+            // Pinch: razón de distancias con ganancia, re-anclado al punto
+            // medio en cada tick (el origen sigue a los dedos: deriva cero).
+            const pinch = pinchRef.current
+            if (pinch && pointersRef.current.size === 2) {
+              const g = gestureRef.current
+              if (!g) return
+              const [a, b] = [...pointersRef.current.values()]
+              const dist = pointerDistance(a, b)
+              retarget(
+                (a.x + b.x) / 2,
+                (a.y + b.y) / 2,
+                pinchScale(g.base, pinch.startDist, dist) / g.base,
+              )
+              return
             }
-            const init = startCapture(e.clientX, e.clientY, base)
-            if (init) {
-              dragRef.current = { startY: e.clientY }
-              tapRef.current = null
-              gestureRef.current = init
-              setGestureState(init)
-              e.currentTarget.style.touchAction = 'none'
+            // Arrastre vertical con un dedo: subir amplía, bajar reduce.
+            const drag = dragRef.current
+            if (drag && pointersRef.current.size === 1) {
+              retarget(
+                e.clientX,
+                e.clientY,
+                dragZoomFactor(e.clientY - drag.startY),
+              )
             }
-          }
-        }}
-        onPointerMove={(e) => {
-          const tracked = pointersRef.current.get(e.pointerId)
-          if (!tracked) return
-          tracked.x = e.clientX
-          tracked.y = e.clientY
-          // Pinch: razón de distancias con ganancia, re-anclado al punto
-          // medio en cada tick (el origen sigue a los dedos: deriva cero).
-          const pinch = pinchRef.current
-          if (pinch && pointersRef.current.size === 2) {
-            const g = gestureRef.current
-            if (!g) return
-            const [a, b] = [...pointersRef.current.values()]
-            const dist = pointerDistance(a, b)
-            retarget(
-              (a.x + b.x) / 2,
-              (a.y + b.y) / 2,
-              pinchScale(g.base, pinch.startDist, dist) / g.base,
-            )
-            return
-          }
-          // Arrastre vertical con un dedo: subir amplía, bajar reduce.
-          const drag = dragRef.current
-          if (drag && pointersRef.current.size === 1) {
-            retarget(
-              e.clientX,
-              e.clientY,
-              dragZoomFactor(e.clientY - drag.startY),
-            )
-          }
-        }}
-        onPointerUp={(e) => endPointer(e.pointerId, e.currentTarget)}
-        onPointerCancel={(e) => endPointer(e.pointerId, e.currentTarget)}
-        onDoubleClick={() => {
-          // El navegador puede sintetizar dblclick tras un arrastre: el zoom
-          // ya quedó confirmado, no resetear.
-          if (Date.now() - dragEndRef.current < DRAG_DBLCLICK_GUARD) return
-          if (gestureRef.current) return
-          // Móvil (punto 1): no hay reset a 100%; doble-clic reajusta al ancho.
-          if (fitEnabled) {
-            setFitMode(true)
-            return
-          }
-          if (scaleRef.current !== 1) {
-            prevScaleRef.current = scaleRef.current
-            zoom.reset()
-          } else if (prevScaleRef.current && prevScaleRef.current !== 1) {
-            zoom.setScale(prevScaleRef.current)
-          }
-        }}
-      >
-        {pdf ? (
-          <div
-            ref={docWrapRef}
-            role="document"
-            aria-label={`Guion en PDF, ${numPages} ${numPages === 1 ? 'página' : 'páginas'}`}
-            className="mx-auto flex w-max min-w-full max-w-none flex-col items-center gap-6"
-            style={
-              gesture
-                ? {
-                    transform: `scale(${clampGestureDisplay(gesture.base * gesture.k) / gesture.base})`,
-                    transformOrigin: `${gesture.ox}px ${gesture.oy}px`,
-                  }
-                : undefined
+          }}
+          onPointerUp={(e) => endPointer(e.pointerId, e.currentTarget)}
+          onPointerCancel={(e) => endPointer(e.pointerId, e.currentTarget)}
+          onDoubleClick={() => {
+            // El navegador puede sintetizar dblclick tras un arrastre: el zoom
+            // ya quedó confirmado, no resetear.
+            if (Date.now() - dragEndRef.current < DRAG_DBLCLICK_GUARD) return
+            if (gestureRef.current) return
+            // Móvil (punto 1): no hay reset a 100%; doble-clic reajusta al ancho.
+            if (fitEnabled) {
+              setFitMode(true)
+              return
             }
-          >
-            {Array.from({ length: numPages }, (_, i) => (
-              <PdfPage
-                key={i + 1}
-                pdf={pdf}
-                pageNumber={i + 1}
-                numPages={numPages}
-                scale={scale}
-              />
-            ))}
-          </div>
-        ) : (
-          <p
-            role="status"
-            className="mx-auto w-full max-w-[8.5in] rounded-[2px] bg-[var(--paper)] p-8 font-mono text-base text-[var(--paper-ink)] opacity-60"
-          >
-            {status === 'rendering'
-              ? 'Generando vista previa…'
-              : paused
-                ? 'Vista previa en pausa.'
-                : 'Cargando motor…'}
-          </p>
-        )}
+            if (scaleRef.current !== 1) {
+              prevScaleRef.current = scaleRef.current
+              zoom.reset()
+            } else if (prevScaleRef.current && prevScaleRef.current !== 1) {
+              zoom.setScale(prevScaleRef.current)
+            }
+          }}
+        >
+          {pdf ? (
+            <div
+              ref={docWrapRef}
+              role="document"
+              aria-label={`Guion en PDF, ${numPages} ${numPages === 1 ? 'página' : 'páginas'}`}
+              className="mx-auto flex w-max min-w-full max-w-none flex-col items-center gap-6"
+              style={
+                gesture
+                  ? {
+                      transform: `scale(${clampGestureDisplay(gesture.base * gesture.k) / gesture.base})`,
+                      transformOrigin: `${gesture.ox}px ${gesture.oy}px`,
+                    }
+                  : undefined
+              }
+            >
+              {Array.from({ length: numPages }, (_, i) => (
+                <PdfPage
+                  key={i + 1}
+                  pdf={pdf}
+                  pageNumber={i + 1}
+                  numPages={numPages}
+                  scale={scale}
+                />
+              ))}
+            </div>
+          ) : (
+            <p
+              role="status"
+              className="mx-auto w-full max-w-[8.5in] rounded-[2px] bg-[var(--paper)] p-8 font-mono text-base text-[var(--paper-ink)] opacity-60"
+            >
+              {status === 'rendering'
+                ? 'Generando vista previa…'
+                : paused
+                  ? 'Vista previa en pausa.'
+                  : 'Cargando motor…'}
+            </p>
+          )}
+        </div>
       </div>
 
       {paused && pdf ? (
