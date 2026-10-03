@@ -1,7 +1,14 @@
-// src/store/uiStorage.test.ts — persistencia del colapso del sidebar.
+// src/store/uiStorage.test.ts — persistencia de prefs UI (sidebar + zoom).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { UI_KEY, loadUi, saveUi } from '@/store/uiStorage'
+import {
+  DEFAULT_ZOOM,
+  UI_KEY,
+  loadUi,
+  loadZoom,
+  saveUi,
+  saveZoom,
+} from '@/store/uiStorage'
 
 function mockStorage(initial: Record<string, string> = {}) {
   const store: Record<string, string> = { ...initial }
@@ -25,28 +32,48 @@ beforeEach(() => {
 })
 
 describe('loadUi', () => {
-  it('sin localStorage o sin dato → expandido', () => {
-    expect(loadUi()).toEqual({ collapsed: false })
+  it('sin localStorage o sin dato → defaults', () => {
+    expect(loadUi()).toEqual({ collapsed: false, zoom: DEFAULT_ZOOM })
     vi.stubGlobal('localStorage', mockStorage())
-    expect(loadUi()).toEqual({ collapsed: false })
+    expect(loadUi()).toEqual({ collapsed: false, zoom: DEFAULT_ZOOM })
   })
 
-  it('lee collapsed true/false válidos', () => {
+  it('lee collapsed + zoom válidos', () => {
+    vi.stubGlobal(
+      'localStorage',
+      mockStorage({
+        [UI_KEY]: JSON.stringify({ collapsed: true, zoom: 1.5 }),
+      }),
+    )
+    expect(loadUi()).toEqual({ collapsed: true, zoom: 1.5 })
+  })
+
+  it('prefs viejas sin zoom → zoom por defecto sin perder collapsed', () => {
     vi.stubGlobal(
       'localStorage',
       mockStorage({ [UI_KEY]: JSON.stringify({ collapsed: true }) }),
     )
-    expect(loadUi()).toEqual({ collapsed: true })
+    expect(loadUi()).toEqual({ collapsed: true, zoom: DEFAULT_ZOOM })
   })
 
   it('JSON corrupto o forma inesperada → defecto sin lanzar', () => {
     vi.stubGlobal('localStorage', mockStorage({ [UI_KEY]: '{no-json' }))
-    expect(loadUi()).toEqual({ collapsed: false })
+    expect(loadUi()).toEqual({ collapsed: false, zoom: DEFAULT_ZOOM })
     vi.stubGlobal(
       'localStorage',
       mockStorage({ [UI_KEY]: JSON.stringify({ collapsed: 'yes' }) }),
     )
-    expect(loadUi()).toEqual({ collapsed: false })
+    expect(loadUi()).toEqual({ collapsed: false, zoom: DEFAULT_ZOOM })
+  })
+
+  it('zoom inválido → cae al defecto sin descartar collapsed', () => {
+    vi.stubGlobal(
+      'localStorage',
+      mockStorage({
+        [UI_KEY]: JSON.stringify({ collapsed: true, zoom: 'grande' }),
+      }),
+    )
+    expect(loadUi()).toEqual({ collapsed: true, zoom: DEFAULT_ZOOM })
   })
 })
 
@@ -54,8 +81,10 @@ describe('saveUi', () => {
   it('persiste como JSON sin lanzar', () => {
     const storage = mockStorage()
     vi.stubGlobal('localStorage', storage)
-    saveUi({ collapsed: true })
-    expect(storage.store[UI_KEY]).toBe(JSON.stringify({ collapsed: true }))
+    saveUi({ collapsed: true, zoom: 2 })
+    expect(storage.store[UI_KEY]).toBe(
+      JSON.stringify({ collapsed: true, zoom: 2 }),
+    )
   })
 
   it('un error de setItem no tumba la UI', () => {
@@ -65,5 +94,22 @@ describe('saveUi', () => {
     })
     vi.stubGlobal('localStorage', storage)
     expect(() => saveUi({ collapsed: true })).not.toThrow()
+  })
+})
+
+describe('zoom (loadZoom/saveZoom)', () => {
+  it('saveZoom no pisa collapsed (read-modify-write)', () => {
+    const storage = mockStorage({
+      [UI_KEY]: JSON.stringify({ collapsed: true, zoom: 1 }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    saveZoom(2)
+    expect(loadUi()).toEqual({ collapsed: true, zoom: 2 })
+    expect(loadZoom()).toBe(2)
+  })
+
+  it('loadZoom sin dato → defecto', () => {
+    vi.stubGlobal('localStorage', mockStorage())
+    expect(loadZoom()).toBe(DEFAULT_ZOOM)
   })
 })

@@ -4,12 +4,22 @@
 // - Doble buffer por página: se rasteriza en un canvas temporal y se vuelca
 //   con `drawImage` de una vez — el canvas visible nunca queda en blanco y
 //   no hay flicker al actualizar tras cada debounce.
-// - Resolución: `scale * min(devicePixelRatio, 2)` para nitidez sin
+// - Resolución: `rasterScale * min(devicePixelRatio, 2)` para nitidez sin
 //   sobremuestrear en pantallas hi-dpi. El tamaño CSS lo fija `scale` solo.
 // - El espacio se reserva en cuanto se conocen las dimensiones (sin
 //   rasterizar), para no desplazar el scroll al aparecer cada página.
+// - Zoom fluido (REVIEW.md punto 3): el tamaño CSS sigue a `scale` al
+//   instante (reescalado proporcional síncrono), mientras el raster —caro—
+//   usa `useDeferredValue(scale)`: durante el gesto no se re-rasteriza,
+//   solo al asentar la escala. Una re-rasterización por gesto, no por tick.
 
-import { useEffect, useRef, useState } from 'react'
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { RenderTask } from 'pdfjs-dist'
 import type { PdfDocument } from '@/lib/pdfjs'
 
@@ -26,6 +36,11 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
   const [inView, setInView] = useState(false)
   const [cssSize, setCssSize] = useState<{ w: number; h: number } | null>(null)
   const [failed, setFailed] = useState(false)
+  // Escala de raster diferida: el CSS crece por tick, el raster solo al
+  // asentar. `prevScaleRef` permite reescalar el tamaño conocido sin pasar
+  // por `pdf.getPage` (instantáneo y síncrono).
+  const rasterScale = useDeferredValue(scale)
+  const prevScaleRef = useRef(scale)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -39,6 +54,23 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
     io.observe(el)
     return () => io.disconnect()
   }, [])
+
+  // Tamaño CSS inmediato ante cada cambio de escala (sin rasterizar).
+  // Es `useLayoutEffect` a propósito, no `useEffect`: el commit del gesto
+  // retira el transform y cambia `scale` en el mismo batch, y la corrección
+  // de scroll de `PdfPreview` también corre pre-paint. Si el tamaño se
+  // resolviera en un efecto pasivo, la primera frame tras soltar pintaría la
+  // hoja en tamaño viejo con el scroll ya corregido (brinco visible); así,
+  // el re-render con el tamaño nuevo también ocurre antes de pintar.
+  useLayoutEffect(() => {
+    const prev = prevScaleRef.current
+    prevScaleRef.current = scale
+    if (prev === scale || prev <= 0) return
+    const ratio = scale / prev
+    setCssSize((size) =>
+      size ? { w: size.w * ratio, h: size.h * ratio } : size,
+    )
+  }, [scale])
 
   useEffect(() => {
     if (!inView) return
@@ -54,11 +86,12 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
           return
         }
         const dpr = Math.min(window.devicePixelRatio || 1, 2)
-        const cssViewport = page.getViewport({ scale })
-        // Reserva el espacio antes de rasterizar (evita saltos de scroll).
+        const cssViewport = page.getViewport({ scale: rasterScale })
+        // Reserva/corrige el espacio con la medida absoluta (converge con
+        // el reescalado proporcional del efecto anterior).
         if (!cancelled)
           setCssSize({ w: cssViewport.width, h: cssViewport.height })
-        const viewport = page.getViewport({ scale: scale * dpr })
+        const viewport = page.getViewport({ scale: rasterScale * dpr })
         const tmp = document.createElement('canvas')
         tmp.width = Math.floor(viewport.width)
         tmp.height = Math.floor(viewport.height)
@@ -83,20 +116,26 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
       cancelled = true
       task?.cancel()
     }
-  }, [pdf, pageNumber, scale, inView])
+  }, [pdf, pageNumber, rasterScale, inView])
 
   return (
     <div
       ref={wrapRef}
+      data-page={pageNumber}
       className="mx-auto bg-[var(--paper)] shadow-[0_4px_20px_-2px_rgba(15,23,42,0.05),0_1px_3px_rgba(15,23,42,0.03)] dark:shadow-[0_2px_4px_rgba(0,0,0,0.2),0_16px_40px_rgba(0,0,0,0.4)]"
       style={
         cssSize
           ? {
+              // REVIEW.md 3: el ancho lo manda `scale` sin tope del
+              // contenedor (`maxWidth:100%` + `w-full` re-encogía la hoja
+              // a 150-200% y el zoom parecía no funcionar). El scroll
+              // horizontal lo gestiona el contenedor de `PdfPreview`.
               width: cssSize.w,
-              maxWidth: '100%',
+              maxWidth: 'none',
+              flexShrink: 0,
               aspectRatio: `${cssSize.w} / ${cssSize.h}`,
             }
-          : { minHeight: 200 }
+          : { minHeight: 200, minWidth: 200 }
       }
     >
       {failed ? (
@@ -108,7 +147,8 @@ export function PdfPage({ pdf, pageNumber, numPages, scale }: PdfPageProps) {
           ref={canvasRef}
           role="img"
           aria-label={`Página ${pageNumber} de ${numPages}`}
-          className="block h-auto w-full"
+          className="block"
+          style={cssSize ? { width: cssSize.w, height: cssSize.h } : undefined}
         />
       )}
     </div>

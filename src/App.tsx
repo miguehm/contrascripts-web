@@ -39,6 +39,7 @@ import { ScriptsSidebar } from '@/features/scripts/ScriptsSidebar'
 import { ExportButton } from '@/components/ExportButton'
 import { useParser } from '@/hooks/useParser'
 import { usePreviewOpen } from '@/hooks/usePreviewOpen'
+import { usePreviewZoom } from '@/hooks/usePreviewZoom'
 import { useScripts } from '@/hooks/useScripts'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
 import { sanitizeFilename } from '@/lib/scripts'
@@ -98,6 +99,9 @@ export default function App() {
   } = useScripts()
   const [tab, setTab] = useState<Tab>('editor')
   const [previewPaused, setPreviewPaused] = useState(false)
+  // REVIEW.md 3: el zoom vive aquí (no en `PdfPreview`) para que el cambio
+  // de tab móvil —que desmonta el preview— no lo reinicie; persiste vía store.
+  const zoom = usePreviewZoom()
   const { collapsed, toggle } = useSidebarCollapsed()
   const { open: previewOpen, toggle: togglePreview } = usePreviewOpen()
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -290,6 +294,7 @@ export default function App() {
                   preview={preview}
                   paused={previewPaused}
                   onPausedChange={setPreviewPaused}
+                  zoom={zoom}
                 />
               </div>
             )}
@@ -330,6 +335,7 @@ export default function App() {
                         preview={preview}
                         paused={previewPaused}
                         onPausedChange={setPreviewPaused}
+                        zoom={zoom}
                       />
                     </div>
                   </ResizablePanel>
