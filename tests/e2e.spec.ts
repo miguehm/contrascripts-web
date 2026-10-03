@@ -18,7 +18,9 @@ async function writeScript(page: Page, text: string): Promise<void> {
 
 test('boot único + preview PDF del seed', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   expect(
     await page.evaluate(
       () => (window as unknown as Record<string, unknown>).__fountainBoots,
@@ -35,7 +37,9 @@ test('boot único + preview PDF del seed', async ({ page }) => {
 
 test('editar actualiza el preview PDF', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
     timeout: 30_000,
   })
@@ -54,7 +58,9 @@ test('editar actualiza el preview PDF', async ({ page }) => {
 
 test('exportar PDF descarga un PDF válido', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   // Bytes listos: el botón se habilita al completar el primer render.
   await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
     timeout: 30_000,
@@ -69,7 +75,9 @@ test('pausar detiene el auto-preview y reanudar lo devuelve', async ({
   page,
 }) => {
   await page.goto('/')
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
     timeout: 30_000,
   })
@@ -86,7 +94,9 @@ test('pausar detiene el auto-preview y reanudar lo devuelve', async ({
 
 test('preview desplegable: ocultar persiste y reabre', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
     timeout: 30_000,
   })
@@ -103,7 +113,9 @@ test('preview desplegable: ocultar persiste y reabre', async ({ page }) => {
   ).toBeHidden()
   // El estado colapsado persiste tras recarga (clave guion.preview.v1).
   await page.reload()
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(
     page.getByRole('button', { name: 'Mostrar vista previa' }),
   ).toBeVisible()
@@ -116,7 +128,9 @@ test('preview desplegable: ocultar persiste y reabre', async ({ page }) => {
 
 test('persistencia tras recarga', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   const marker = `PERSIST-${Date.now()}`
   await writeScript(page, `INT. CASA - DÍA\n\n${marker}\n`)
   await expect
@@ -130,6 +144,8 @@ test('persistencia tras recarga', async ({ page }) => {
     )
     .toBe(true)
   await page.reload()
-  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.locator('.cm-content:visible')).toContainText(marker)
 })

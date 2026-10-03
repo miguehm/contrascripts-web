@@ -54,11 +54,8 @@ function StatusBadge({
 }) {
   if (status === 'ready') {
     return (
-      <span
-        role="status"
-        className="rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground uppercase"
-      >
-        Listo
+      <span role="status" className="sr-only">
+        Motor listo
       </span>
     )
   }
@@ -81,9 +78,10 @@ function StatusBadge({
     <span
       role="status"
       aria-label="Iniciando motor"
+      title="Cargando el analizador Fountain…"
       className="rounded-sm border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground uppercase"
     >
-      Iniciando…
+      Iniciando motor…
     </span>
   )
 }
@@ -160,7 +158,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
+    <div
+      data-engine-status={status}
+      className="flex h-dvh flex-col bg-background text-foreground"
+    >
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
         <Button
           ref={menuButtonRef}
