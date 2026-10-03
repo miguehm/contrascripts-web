@@ -84,6 +84,36 @@ test('pausar detiene el auto-preview y reanudar lo devuelve', async ({
   ).toBeVisible()
 })
 
+test('preview desplegable: ocultar persiste y reabre', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  // Oculta (hay dos botones "Ocultar": header + cabecera del preview).
+  await page
+    .getByRole('button', { name: 'Ocultar vista previa' })
+    .first()
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'Mostrar vista previa' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('document', { name: /Guion en PDF/ }),
+  ).toBeHidden()
+  // El estado colapsado persiste tras recarga (clave guion.preview.v1).
+  await page.reload()
+  await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })
+  await expect(
+    page.getByRole('button', { name: 'Mostrar vista previa' }),
+  ).toBeVisible()
+  // Reabre y el PDF vuelve sin recargar la página.
+  await page.getByRole('button', { name: 'Mostrar vista previa' }).click()
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+})
+
 test('persistencia tras recarga', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText('Listo')).toBeVisible({ timeout: 30_000 })

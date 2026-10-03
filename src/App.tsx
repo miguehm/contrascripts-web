@@ -11,7 +11,14 @@
 // Editor/Preview. Los tokens Warm/Cinematic (§8) quedan fuera.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Menu, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
+import {
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+} from 'lucide-react'
 import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -31,6 +38,7 @@ import { ScriptsDrawer } from '@/features/scripts/ScriptsDrawer'
 import { ScriptsSidebar } from '@/features/scripts/ScriptsSidebar'
 import { ExportButton } from '@/components/ExportButton'
 import { useParser } from '@/hooks/useParser'
+import { usePreviewOpen } from '@/hooks/usePreviewOpen'
 import { useScripts } from '@/hooks/useScripts'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
 import { sanitizeFilename } from '@/lib/scripts'
@@ -93,13 +101,15 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('editor')
   const [previewPaused, setPreviewPaused] = useState(false)
   const { collapsed, toggle } = useSidebarCollapsed()
+  const { open: previewOpen, toggle: togglePreview } = usePreviewOpen()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const text = activeScript?.text ?? ''
   const { status, doc, warnings, retry } = useParser(text)
 
-  // El preview solo trabaja si es visible en algún layout: en móvil el tab
-  // activo manda; en desktop el dual-pane siempre está montado.
+  // REVIEW.md 4: el preview solo trabaja si es visible. En móvil manda el
+  // tab activo; en desktop manda el toggle (colapso total). Oculto no
+  // renderiza: `usePdfPreview` marca dirty y renderiza al volver.
   const [isDesktop, setIsDesktop] = useState(
     () =>
       typeof window !== 'undefined' &&
@@ -117,13 +127,22 @@ export default function App() {
         e.preventDefault()
         toggle()
       }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === 'p'
+      ) {
+        e.preventDefault()
+        togglePreview()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggle])
+  }, [toggle, togglePreview])
+  const previewVisible = isDesktop ? previewOpen : tab === 'preview'
   const preview = usePdfPreview(text, {
     paused: previewPaused,
-    visible: tab === 'preview' || isDesktop,
+    visible: previewVisible,
   })
 
   const stats = useMemo(() => {
@@ -194,6 +213,28 @@ export default function App() {
             {stats.elements} elementos · ~{stats.pages} pág.
           </span>
           <ExportButton bytes={preview.bytes} filename={pdfName} />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={togglePreview}
+            aria-label={
+              previewOpen ? 'Ocultar vista previa' : 'Mostrar vista previa'
+            }
+            aria-expanded={previewOpen}
+            aria-controls="preview-pane"
+            title={
+              previewOpen
+                ? 'Ocultar vista previa (Ctrl+Mayús+P)'
+                : 'Mostrar vista previa (Ctrl+Mayús+P)'
+            }
+            className="hidden md:inline-flex"
+          >
+            {previewOpen ? (
+              <PanelRightClose aria-hidden="true" />
+            ) : (
+              <PanelRightOpen aria-hidden="true" />
+            )}
+          </Button>
           <ThemeToggle />
         </span>
       </header>
@@ -232,7 +273,7 @@ export default function App() {
               ))}
             </div>
             {tab === 'editor' ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <div className="mx-auto flex min-h-0 w-full max-w-[70ch] flex-1 flex-col gap-3">
                 <div className="min-h-0 flex-1">
                   <Editor
                     value={text}
@@ -264,9 +305,37 @@ export default function App() {
               <ScriptsSidebar collapsed={collapsed} />
             </aside>
             <div className="min-w-0 flex-1">
-              <ResizablePanelGroup orientation="horizontal" className="p-4">
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="flex h-full flex-col gap-3 pr-2">
+              {previewOpen ? (
+                <ResizablePanelGroup orientation="horizontal" className="p-4">
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <div className="flex h-full flex-col gap-3 pr-2">
+                      <div className="mx-auto flex min-h-0 w-full max-w-[70ch] flex-1 flex-col gap-3 xl:max-w-[820px]">
+                        <div className="min-h-0 flex-1">
+                          <Editor
+                            value={text}
+                            onChange={handleChange}
+                            disabled={booting}
+                          />
+                        </div>
+                        <Separator />
+                        <Warnings warnings={warnings} />
+                      </div>
+                    </div>
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <div id="preview-pane" className="h-full pl-2">
+                      <PdfPreview
+                        preview={preview}
+                        paused={previewPaused}
+                        onPausedChange={setPreviewPaused}
+                      />
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              ) : (
+                <div className="h-full p-4">
+                  <div className="mx-auto flex h-full w-full max-w-[70ch] flex-col gap-3 xl:max-w-[820px]">
                     <div className="min-h-0 flex-1">
                       <Editor
                         value={text}
@@ -277,18 +346,8 @@ export default function App() {
                     <Separator />
                     <Warnings warnings={warnings} />
                   </div>
-                </ResizablePanel>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="h-full pl-2">
-                    <PdfPreview
-                      preview={preview}
-                      paused={previewPaused}
-                      onPausedChange={setPreviewPaused}
-                    />
-                  </div>
-                </ResizablePanel>
-              </ResizablePanelGroup>
+                </div>
+              )}
             </div>
           </main>
         </>
