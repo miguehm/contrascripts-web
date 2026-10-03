@@ -126,6 +126,61 @@ test('preview desplegable: ocultar persiste y reabre', async ({ page }) => {
   })
 })
 
+test('ambos plegados: el editor hace scroll interno y el header queda fijo', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  // Normaliza estado: sidebar colapsado + preview oculto (rama monopanel).
+  const collapseSidebar = page.getByRole('button', {
+    name: 'Colapsar guiones',
+  })
+  if (await collapseSidebar.isVisible()) await collapseSidebar.click()
+  const hidePreview = page
+    .getByRole('button', { name: 'Ocultar vista previa' })
+    .first()
+  if (await hidePreview.isVisible()) await hidePreview.click()
+  await expect(
+    page.getByRole('button', { name: 'Mostrar vista previa' }),
+  ).toBeVisible()
+
+  // Guion largo que desbordaría la página si el editor creciera en altura.
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+  // Fuerza scroll al final del editor.
+  await page.locator('.cm-content:visible').press('ControlOrMeta+End')
+
+  // La página no debe scrollear: el scroll vive en .cm-scroller.
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
+  const overflows = await page.evaluate(
+    () =>
+      document.documentElement.scrollHeight <= window.innerHeight + 1 &&
+      document.body.scrollHeight <= window.innerHeight + 1,
+  )
+  expect(overflows).toBe(true)
+  const headerBox = await page.locator('header').first().boundingBox()
+  expect(headerBox).not.toBeNull()
+  expect(headerBox!.y).toBeGreaterThanOrEqual(0)
+  const viewportH = await page.evaluate(() => window.innerHeight)
+  expect(headerBox!.y).toBeLessThan(viewportH)
+  // Hay dos editores montados (móvil oculto + desktop): medir el visible.
+  const innerScroll = await page
+    .locator('.cm-scroller:visible')
+    .evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }))
+  expect(innerScroll.scrollHeight).toBeGreaterThan(innerScroll.clientHeight)
+})
+
 test('persistencia tras recarga', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
