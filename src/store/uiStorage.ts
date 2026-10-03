@@ -3,7 +3,8 @@
 // Los componentes tienen prohibido tocar `localStorage` (AGENTS.md nº2);
 // pasan por `useSidebarCollapsed` / `usePreviewZoom` → este módulo. Guarda
 // el colapso del sidebar en desktop más la escala del zoom del preview
-// (REVIEW.md punto 3). El drawer móvil es efímero y nunca se persiste.
+// (REVIEW.md punto 3) y el modo de ajuste al ancho en móvil (punto 1).
+// El drawer móvil es efímero y nunca se persiste.
 // Un dato corrupto o ausente cae a los defaults sin tumbar el boot.
 
 export const UI_KEY = 'guion.ui.v1'
@@ -16,6 +17,10 @@ export interface UiPrefs {
   /** Escala del zoom del preview. Opcional en lectura para compatibilidad
    * con prefs guardadas antes de REVIEW.md punto 3 (solo `collapsed`). */
   zoom?: number
+  /** Ajuste al ancho en móvil (REVIEW.md punto 1). Opcional en lectura:
+   * ausente = sin preferencia (el hook decide por layout); solo `true` o
+   * `false` explícitos cuentan como preferencia guardada. */
+  fitWidth?: boolean
 }
 
 const DEFAULTS: UiPrefs = { collapsed: false, zoom: DEFAULT_ZOOM }
@@ -32,19 +37,26 @@ function isUiPrefs(value: unknown): value is UiPrefs {
   return typeof v.collapsed === 'boolean'
 }
 
+function isValidFitWidth(value: unknown): value is boolean {
+  return typeof value === 'boolean'
+}
+
 /** Lee las prefs UI. Nunca lanza: ante ausencia, JSON roto o forma
  * inesperada, devuelve el valor por defecto. Un `zoom` inválido cae a
- * `DEFAULT_ZOOM` sin descartar `collapsed`. */
+ * `DEFAULT_ZOOM` sin descartar `collapsed`; un `fitWidth` ausente o
+ * inválido se omite (compat con prefs viejas: el hook decide por layout). */
 export function loadUi(): UiPrefs {
   try {
     const raw = globalThis.localStorage?.getItem(UI_KEY)
     if (raw == null || raw === '') return { ...DEFAULTS }
     const parsed: unknown = JSON.parse(raw)
     if (!isUiPrefs(parsed)) return { ...DEFAULTS }
-    return {
+    const out: UiPrefs = {
       collapsed: parsed.collapsed,
       zoom: isValidZoom(parsed.zoom) ? parsed.zoom : DEFAULT_ZOOM,
     }
+    if (isValidFitWidth(parsed.fitWidth)) out.fitWidth = parsed.fitWidth
+    return out
   } catch {
     return { ...DEFAULTS }
   }
@@ -61,6 +73,32 @@ export function saveZoom(zoom: number): void {
   try {
     const current = loadUi()
     saveUi({ ...current, zoom })
+  } catch {
+    // Intencionadamente silencioso: es preferencia cosmética.
+  }
+}
+
+/** Lee la preferencia de ajuste al ancho. `null` = sin dato guardado
+ * (prefs viejas, JSON roto o valor inválido: el hook decide por layout).
+ * Nunca lanza. */
+export function loadFitWidth(): boolean | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(UI_KEY)
+    if (raw == null || raw === '') return null
+    const parsed: unknown = JSON.parse(raw)
+    if (!isUiPrefs(parsed)) return null
+    return isValidFitWidth(parsed.fitWidth) ? parsed.fitWidth : null
+  } catch {
+    return null
+  }
+}
+
+/** Persiste solo `fitWidth` con read-modify-write, sin pisar `collapsed`
+ * ni `zoom`. Nunca lanza (cosmético). */
+export function saveFitWidth(fitWidth: boolean): void {
+  try {
+    const current = loadUi()
+    saveUi({ ...current, fitWidth })
   } catch {
     // Intencionadamente silencioso: es preferencia cosmética.
   }

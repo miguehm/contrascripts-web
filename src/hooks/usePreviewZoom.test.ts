@@ -7,6 +7,7 @@ import {
   ZOOM_MAX,
   ZOOM_MIN,
   clampZoom,
+  computeFitScale,
   contentPointUnder,
   dragZoomFactor,
   pinchScale,
@@ -103,6 +104,72 @@ describe('usePreviewZoom', () => {
     act(() => result.current.setScale(-5))
     expect(result.current.scale).toBe(ZOOM_MIN)
     expect(result.current.canZoomOut).toBe(false)
+  })
+})
+
+describe('computeFitScale', () => {
+  it('ajusta la hoja al ancho útil del contenedor', () => {
+    expect(computeFitScale(360, 612, 32)).toBeCloseTo(328 / 612)
+    expect(computeFitScale(390, 612, 32)).toBeCloseTo(358 / 612)
+    expect(computeFitScale(768, 612, 48)).toBeCloseTo(720 / 612)
+  })
+
+  it('no sube de FIT_MAX y no baja de FIT_MIN', () => {
+    expect(computeFitScale(1000, 612, 32)).toBeLessThanOrEqual(1.5)
+    expect(computeFitScale(200, 612, 32)).toBeGreaterThanOrEqual(0.3)
+  })
+
+  it('entradas inválidas caen al zoom por defecto', () => {
+    expect(computeFitScale(0)).toBe(1)
+    expect(computeFitScale(NaN)).toBe(1)
+    expect(computeFitScale(360, 0)).toBe(1)
+  })
+})
+
+describe('usePreviewZoom · fit (punto 1)', () => {
+  it('sin preferencia guardada usa fitDefault; desktop → manual', () => {
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: false }))
+    expect(result.current.fitMode).toBe(false)
+    const { result: mobile } = renderHook(() =>
+      usePreviewZoom({ fitDefault: true }),
+    )
+    expect(mobile.current.fitMode).toBe(true)
+  })
+
+  it('un zoom manual sale de fit y persiste fitWidth=false', () => {
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
+    act(() => result.current.setFitScale(0.53))
+    expect(result.current.effectiveScale).toBeCloseTo(0.53)
+    act(() => result.current.zoomIn())
+    expect(result.current.fitMode).toBe(false)
+    expect(result.current.effectiveScale).toBe(result.current.scale)
+    const { result: second } = renderHook(() =>
+      usePreviewZoom({ fitDefault: true }),
+    )
+    expect(second.current.fitMode).toBe(false)
+  })
+
+  it('un gesto (setScaleLive) sale de fit sin arrastrar fitWidth en storage', () => {
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
+    act(() => result.current.setScaleLive(1.22))
+    expect(result.current.fitMode).toBe(false)
+  })
+
+  it('el botón de ajustar reactiva fit y persiste', () => {
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: false }))
+    act(() => result.current.setScale(2))
+    act(() => result.current.setFitMode(true))
+    expect(result.current.fitMode).toBe(true)
+    const { result: second } = renderHook(() =>
+      usePreviewZoom({ fitDefault: false }),
+    )
+    expect(second.current.fitMode).toBe(true)
+  })
+
+  it('effectiveScale usa el fit medido mientras fitMode siga activo', () => {
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
+    act(() => result.current.setFitScale(0.54))
+    expect(result.current.effectivePercent).toBe(54)
   })
 })
 

@@ -54,18 +54,23 @@ function Harness({
   preview,
   paused = false,
   onPausedChange = () => {},
+  fitEnabled = false,
+  fitDefault = false,
 }: {
   preview: PdfPreviewState
   paused?: boolean
   onPausedChange?: () => void
+  fitEnabled?: boolean
+  fitDefault?: boolean
 }) {
-  const zoom = usePreviewZoom()
+  const zoom = usePreviewZoom({ fitDefault })
   return (
     <PdfPreview
       preview={preview}
       paused={paused}
       onPausedChange={onPausedChange}
       zoom={zoom}
+      fitEnabled={fitEnabled}
     />
   )
 }
@@ -447,6 +452,12 @@ describe('vista en grande (REVIEW.md punto 2)', () => {
       setScaleLive: vi.fn(),
       commit: vi.fn(),
       reset: vi.fn(),
+      fitMode: false,
+      fitScale: null,
+      effectiveScale: 1,
+      effectivePercent: 100,
+      setFitMode: vi.fn(),
+      setFitScale: vi.fn(),
     }
     const { rerender } = render(
       <PdfPreview
@@ -477,5 +488,72 @@ describe('vista en grande (REVIEW.md punto 2)', () => {
     expect(
       screen.getByRole('button', { name: 'Salir de vista ampliada' }),
     ).toBeDefined()
+  })
+})
+
+describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
+  it('no hay botón "Ajustar" y hacer zoom sale de fit', async () => {
+    const pdf = makePdf(1)
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        fitEnabled
+        fitDefault
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    expect(screen.queryByRole('button', { name: 'Ajustar' })).toBeNull()
+    // En jsdom no hay ResizeObserver: effectiveScale cae al manual, pero
+    // el modo fit (persistido) sí arranca activo en móvil.
+    fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+    expect(screen.getByText('125 %')).toBeDefined()
+    await flush()
+  })
+
+  it('click en el porcentaje entra en fit (no resetea a 100%)', async () => {
+    const pdf = makePdf(1)
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        fitEnabled
+        fitDefault={false}
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+    expect(screen.getByText('125 %')).toBeDefined()
+    fireEvent.click(screen.getByText('125 %'))
+    // Sigue sin resetear a 100%: el modo manual persiste hasta que RO mida.
+    expect(screen.queryByText('100 %')).toBeNull()
+    await flush()
+  })
+
+  it('doble-clic en móvil reajusta al ancho (no alterna 100%)', async () => {
+    const pdf = makePdf(1)
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        fitEnabled
+        fitDefault={false}
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+    fireEvent.doubleClick(screen.getByTestId('preview-pages'))
+    // No aparece 100%: en móvil el doble-clic entra en fit.
+    expect(screen.queryByText('100 %')).toBeNull()
+    await flush()
+  })
+
+  it('desktop: el porcentaje sigue reseteando a 100% y no hay fit', async () => {
+    const pdf = makePdf(1)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    await screen.findByLabelText('Página 1 de 1')
+    fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+    fireEvent.click(screen.getByText('125 %'))
+    expect(screen.getByText('100 %')).toBeDefined()
+    fireEvent.doubleClick(screen.getByTestId('preview-pages'))
+    expect(screen.getByText('125 %')).toBeDefined()
+    await flush()
   })
 })

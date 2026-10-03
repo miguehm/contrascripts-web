@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_ZOOM,
   UI_KEY,
+  loadFitWidth,
   loadUi,
   loadZoom,
+  saveFitWidth,
   saveUi,
   saveZoom,
 } from '@/store/uiStorage'
@@ -111,5 +113,42 @@ describe('zoom (loadZoom/saveZoom)', () => {
   it('loadZoom sin dato → defecto', () => {
     vi.stubGlobal('localStorage', mockStorage())
     expect(loadZoom()).toBe(DEFAULT_ZOOM)
+  })
+})
+
+describe('fitWidth (REVIEW.md punto 1)', () => {
+  it('sin dato o prefs viejas → null (el hook decide por layout)', () => {
+    vi.stubGlobal('localStorage', mockStorage())
+    expect(loadFitWidth()).toBeNull()
+    vi.stubGlobal(
+      'localStorage',
+      mockStorage({ [UI_KEY]: JSON.stringify({ collapsed: true, zoom: 1.5 }) }),
+    )
+    expect(loadFitWidth()).toBeNull()
+  })
+
+  it('lee y persiste sin pisar collapsed ni zoom', () => {
+    const storage = mockStorage({
+      [UI_KEY]: JSON.stringify({ collapsed: true, zoom: 1.25 }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    saveFitWidth(true)
+    expect(loadFitWidth()).toBe(true)
+    expect(loadUi()).toEqual({ collapsed: true, zoom: 1.25, fitWidth: true })
+    saveFitWidth(false)
+    expect(loadFitWidth()).toBe(false)
+    expect(loadUi()).toEqual({ collapsed: true, zoom: 1.25, fitWidth: false })
+  })
+
+  it('valor inválido o JSON roto → null sin lanzar', () => {
+    vi.stubGlobal(
+      'localStorage',
+      mockStorage({
+        [UI_KEY]: JSON.stringify({ collapsed: true, fitWidth: 'sí' }),
+      }),
+    )
+    expect(loadFitWidth()).toBeNull()
+    vi.stubGlobal('localStorage', mockStorage({ [UI_KEY]: '{no-json' }))
+    expect(loadFitWidth()).toBeNull()
   })
 })

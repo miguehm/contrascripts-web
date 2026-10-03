@@ -155,9 +155,25 @@ export default function App() {
   } = useScripts()
   const [tab, setTab] = useState<Tab>('editor')
   const [previewPaused, setPreviewPaused] = useState(false)
+  // REVIEW.md 4: el preview solo trabaja si es visible. En móvil manda el
+  // tab activo; en desktop manda el toggle (colapso total). Oculto no
+  // renderiza: `usePdfPreview` marca dirty y renderiza al volver.
+  const [isDesktop, setIsDesktop] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(min-width: 768px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onChange = () => setIsDesktop(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
   // REVIEW.md 3: el zoom vive aquí (no en `PdfPreview`) para que el cambio
   // de tab móvil —que desmonta el preview— no lo reinicie; persiste vía store.
-  const zoom = usePreviewZoom()
+  // REVIEW.md 1: fit al ancho por defecto solo en móvil (fitDefault); en
+  // desktop siempre entra manual.
+  const zoom = usePreviewZoom({ fitDefault: !isDesktop })
   const { collapsed, toggle } = useSidebarCollapsed()
   const {
     open: previewOpen,
@@ -174,20 +190,6 @@ export default function App() {
   const text = activeScript?.text ?? ''
   const { status, doc, warnings, retry } = useParser(text)
 
-  // REVIEW.md 4: el preview solo trabaja si es visible. En móvil manda el
-  // tab activo; en desktop manda el toggle (colapso total). Oculto no
-  // renderiza: `usePdfPreview` marca dirty y renderiza al volver.
-  const [isDesktop, setIsDesktop] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia('(min-width: 768px)').matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)')
-    const onChange = () => setIsDesktop(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
@@ -368,6 +370,7 @@ export default function App() {
                   zoom={zoom}
                   expanded={previewExpanded}
                   onToggleExpand={toggleExpanded}
+                  fitEnabled={!isDesktop}
                 />
               </div>
             )}

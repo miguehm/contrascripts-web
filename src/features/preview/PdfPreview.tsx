@@ -21,6 +21,15 @@
 // - Gestos: pinch de 2 dedos amplificado (×2.0), `Ctrl/Cmd+rueda` (pellizco
 //   del trackpad), doble-tap-arrastrar vertical con un dedo (estilo Maps) y
 //   doble-clic para alternar 100% ↔ anterior.
+//
+// Fit al ancho (REVIEW.md punto 1, solo móvil):
+// - `PdfPreview` no decide el modo: lo trae `zoom.fitMode` (vive en `App`
+//   para sobrevivir al cambio de tab y persiste en `store/uiStorage.ts`).
+// - Cuando `fitEnabled`, un `ResizeObserver` sobre el contenedor mide el
+//   ancho útil y publica `zoom.setFitScale()` (no persiste: depende del
+//   viewport). La escala mostrada es `zoom.effectiveScale`.
+// - Cualquier zoom manual (`setScale`, botones, gestos, doble-clic) sale
+//   de fit; el botón "Ajustar al ancho" vuelve a entrar.
 
 import {
   useCallback,
@@ -33,7 +42,10 @@ import { Button } from '@/components/ui/button'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
 import {
-  clampZoom,
+  FIT_MIN,
+  PAGE_WIDTH_PT,
+  ZOOM_MAX,
+  computeFitScale,
   contentPointUnder,
   dragZoomFactor,
   pinchScale,
@@ -50,6 +62,9 @@ interface PdfPreviewProps {
   /** Vista en grande (REVIEW.md punto 2): el panel abarca todo el ancho. */
   expanded?: boolean
   onToggleExpand?: () => void
+  /** Fit al ancho (punto 1): solo la rama móvil de `App` lo activa.
+   * En desktop se omite (falso) y el zoom manual queda intacto. */
+  fitEnabled?: boolean
 }
 
 interface PinchState {
@@ -109,6 +124,15 @@ function pointerDistance(
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
+/** Sujeción para la vista previa del gesto: admite el rango de fit
+ * (`FIT_MIN`, bajo el `ZOOM_MIN` manual) para no pegar un salto al
+ * gesticular desde el ajuste al ancho. El commit sí cae al rango manual
+ * vía `setScale`. */
+function clampGestureDisplay(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(ZOOM_MAX, Math.max(FIT_MIN, value))
+}
+
 export function PdfPreview({
   preview,
   paused,
@@ -116,9 +140,17 @@ export function PdfPreview({
   zoom,
   expanded = false,
   onToggleExpand,
+  fitEnabled = false,
 }: PdfPreviewProps) {
   const { status, pdf, numPages, error, renderNow } = preview
-  const { scale, canZoomIn, canZoomOut } = zoom
+  const {
+    effectiveScale: scale,
+    canZoomIn,
+    canZoomOut,
+    fitMode,
+    setFitMode,
+    setFitScale,
+  } = zoom
   const updating = status === 'rendering' && pdf !== null
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -150,7 +182,9 @@ export function PdfPreview({
   const [gesture, setGestureState] = useState<GestureState | null>(null)
 
   // Escala mostrada: durante el gesto, base × k (sin tocar el layout).
-  const displayScale = gesture ? clampZoom(gesture.base * gesture.k) : scale
+  const displayScale = gesture
+    ? clampGestureDisplay(gesture.base * gesture.k)
+    : scale
   const displayPercent = Math.round(displayScale * 100)
 
   // Refs sincronizadas para los handlers nativos (rueda) y de puntero, que
@@ -163,6 +197,38 @@ export function PdfPreview({
   useEffect(() => {
     zoomRef.current = zoom
   })
+
+  // Punto 1 (solo móvil): mide el ancho útil del contenedor y publica la
+  // escala de fit. `useLayoutEffect` a propósito: la primera medida debe
+  // estar lista pre-paint, o el usuario ve un frame a 100% antes de que
+  // la hoja salte al ancho. Ante navegadores sin `ResizeObserver` (tests
+  // jsdom) se omite sin romper: `effectiveScale` cae al zoom manual.
+  // No persiste (depende del viewport).
+  useLayoutEffect(() => {
+    if (!fitEnabled) return
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const measure = () => {
+      let padTotal = 32
+      try {
+        const cs = getComputedStyle(el)
+        const pl = Number.parseFloat(cs.paddingLeft)
+        const pr = Number.parseFloat(cs.paddingRight)
+        if (Number.isFinite(pl) && Number.isFinite(pr)) padTotal = pl + pr
+      } catch {
+        // getComputedStyle inaccesible: estimación p-4.
+      }
+      const w = el.clientWidth
+      if (w > 0) setFitScale(computeFitScale(w, PAGE_WIDTH_PT, padTotal))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      setFitScale(null)
+    }
+  }, [fitEnabled, setFitScale])
 
   /** Captura el origen del gesto: rects + scroll + punto bajo los dedos.
    * Válido porque al empezar no hay transform activo (layout = base).
@@ -252,7 +318,7 @@ export function PdfPreview({
     }
     const g = gestureRef.current
     if (!g) return null
-    const newScale = clampZoom(g.base * g.k)
+    const newScale = clampGestureDisplay(g.base * g.k)
     gestureRef.current = null
     setGestureState(null)
     if (Math.abs(newScale - g.base) < COMMIT_EPS) return g.base
@@ -385,12 +451,27 @@ export function PdfPreview({
           >
             −
           </Button>
+          {/* Punto 1 (móvil): sin botón "Ajustar"; el número de porcentaje
+              hace esa acción. En desktop sigue reseteando al 100 %. */}
           <Button
             size="xs"
             variant="ghost"
-            aria-label={`Zoom ${displayPercent} por ciento. Activar para restablecer al 100 por ciento`}
-            title="Restablecer zoom al 100 % (o doble-clic en la página)"
-            onClick={zoom.reset}
+            aria-label={
+              fitEnabled
+                ? fitMode
+                  ? `Zoom ${displayPercent} por ciento, ajustado al ancho. Activar para reajustar al ancho`
+                  : `Zoom ${displayPercent} por ciento. Activar para ajustar al ancho del dispositivo`
+                : `Zoom ${displayPercent} por ciento. Activar para restablecer al 100 por ciento`
+            }
+            title={
+              fitEnabled
+                ? 'Ajustar al ancho del dispositivo'
+                : 'Restablecer zoom al 100 % (o doble-clic en la página)'
+            }
+            onClick={() => {
+              if (fitEnabled) setFitMode(true)
+              else zoom.reset()
+            }}
             className="min-w-10 font-mono text-[10px] text-muted-foreground tabular-nums"
             aria-live="polite"
           >
@@ -572,6 +653,11 @@ export function PdfPreview({
           // ya quedó confirmado, no resetear.
           if (Date.now() - dragEndRef.current < DRAG_DBLCLICK_GUARD) return
           if (gestureRef.current) return
+          // Móvil (punto 1): no hay reset a 100%; doble-clic reajusta al ancho.
+          if (fitEnabled) {
+            setFitMode(true)
+            return
+          }
           if (scaleRef.current !== 1) {
             prevScaleRef.current = scaleRef.current
             zoom.reset()
@@ -589,7 +675,7 @@ export function PdfPreview({
             style={
               gesture
                 ? {
-                    transform: `scale(${clampZoom(gesture.base * gesture.k) / gesture.base})`,
+                    transform: `scale(${clampGestureDisplay(gesture.base * gesture.k) / gesture.base})`,
                     transformOrigin: `${gesture.ox}px ${gesture.oy}px`,
                   }
                 : undefined
