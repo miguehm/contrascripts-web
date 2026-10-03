@@ -224,9 +224,9 @@ export default function App() {
   return (
     <div
       data-engine-status={status}
-      className="flex h-dvh flex-col bg-background text-foreground"
+      className="flex h-dvh flex-col overflow-hidden bg-background text-foreground"
     >
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
+      <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
         <Button
           ref={menuButtonRef}
           variant="ghost"
@@ -359,20 +359,27 @@ export default function App() {
           </main>
 
           {/* Desktop: sidebar + dual-pane */}
-          <main className="hidden min-h-0 flex-1 md:flex">
+          <main className="hidden min-h-0 flex-1 overflow-hidden md:flex">
             <aside
               id="scripts-sidebar"
-              className={`shrink-0 border-r border-border p-4 ${
+              className={`min-h-0 shrink-0 overflow-hidden border-r border-border p-4 ${
                 collapsed ? 'w-14 px-2' : 'w-60'
               }`}
             >
               <ScriptsSidebar collapsed={collapsed} />
             </aside>
-            <div className="min-w-0 flex-1">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {previewOpen ? (
-                <ResizablePanelGroup orientation="horizontal" className="p-4">
-                  <ResizablePanel defaultSize={50} minSize={30}>
-                    <div className="flex h-full flex-col pr-2">
+                <ResizablePanelGroup
+                  orientation="horizontal"
+                  className="min-h-0 overflow-hidden p-4"
+                >
+                  <ResizablePanel
+                    defaultSize={50}
+                    minSize={30}
+                    className="min-h-0 overflow-hidden"
+                  >
+                    <div className="flex h-full min-h-0 flex-col overflow-hidden pr-2">
                       <EditorColumn
                         text={text}
                         disabled={booting}
@@ -384,8 +391,15 @@ export default function App() {
                     </div>
                   </ResizablePanel>
                   <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={50} minSize={30}>
-                    <div id="preview-pane" className="h-full pl-2">
+                  <ResizablePanel
+                    defaultSize={50}
+                    minSize={30}
+                    className="min-h-0 overflow-hidden"
+                  >
+                    <div
+                      id="preview-pane"
+                      className="flex h-full min-h-0 flex-col overflow-hidden pl-2"
+                    >
                       <PdfPreview
                         preview={preview}
                         paused={previewPaused}
@@ -396,7 +410,7 @@ export default function App() {
                   </ResizablePanel>
                 </ResizablePanelGroup>
               ) : (
-                <div className="h-full p-4">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                   <EditorColumn
                     text={text}
                     disabled={booting}

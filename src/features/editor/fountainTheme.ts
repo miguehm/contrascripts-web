@@ -54,9 +54,22 @@ const fountainHighlight = HighlightStyle.define([
 const fountainLayout = EditorView.theme({
   '&': {
     height: '100%',
+    minHeight: '0',
     backgroundColor: 'transparent',
     color: 'var(--card-foreground)',
     fontSize: '1rem',
+  },
+  // El scroll debe quedar dentro del editor: sin esto, con la rama
+  // monopanel (preview oculto) el contenido empuja la altura de la página
+  // y el header/sidebar hacen scroll (REVIEW.md punto 1).
+  '.cm-editor': {
+    height: '100%',
+    minHeight: '0',
+    overflow: 'hidden',
+  },
+  '.cm-scroller': {
+    minHeight: '0',
+    overflow: 'auto',
   },
   '.cm-content': {
     fontFamily: 'var(--font-mono)',
