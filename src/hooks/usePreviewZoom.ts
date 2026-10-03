@@ -107,30 +107,6 @@ export function contentPointUnder(
   return origin + (viewX + scroll - wrapOffset - origin) / k
 }
 
-/** Scroll absoluto que deja el ancla `anchorLocal` (coords de layout base)
- * en la posición `viewX` del viewport tras saltar de `baseScale` a
- * `newScale` con origen de contenido estable (flujo de bloque LTR).
- * Función pura para testear el commit sin salto. */
-export function scrollForAnchor(
-  wrapOffset: number,
-  anchorLocal: number,
-  baseScale: number,
-  newScale: number,
-  viewX: number,
-): number {
-  if (
-    !Number.isFinite(wrapOffset) ||
-    !Number.isFinite(anchorLocal) ||
-    !Number.isFinite(newScale) ||
-    !Number.isFinite(viewX) ||
-    !Number.isFinite(baseScale) ||
-    baseScale <= 0
-  ) {
-    return wrapOffset + anchorLocal - viewX
-  }
-  return wrapOffset + (anchorLocal * newScale) / baseScale - viewX
-}
-
 export interface PreviewZoom {
   scale: number
   percent: number

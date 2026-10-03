@@ -85,6 +85,22 @@ class FakeObserver {
   disconnect() {}
 }
 
+/** Stub de `getBoundingClientRect` del wrapper con cola de valores: el
+ * componente lo lee al empezar el gesto (1), al confirmar (2) y en el layout
+ * effect post-commit (3). Así se simula que el layout nuevo desplazó el
+ * contenido (régimen centrado) y se verifica la compensación por medición. */
+function stubWrapRects(
+  el: HTMLElement,
+  rects: Array<{ left: number; top: number }>,
+) {
+  let i = 0
+  el.getBoundingClientRect = vi.fn(() => {
+    const r = rects[Math.min(i, rects.length - 1)]
+    i += 1
+    return { left: r.left, top: r.top } as unknown as DOMRect
+  })
+}
+
 beforeEach(() => {
   drawImage.mockClear()
   // jsdom sin URL es origen opaco (sin localStorage real): stub en memoria
@@ -257,10 +273,17 @@ describe('PdfPreview', () => {
     // Invariante: tamaño y scroll se resuelven en el mismo commit (el tamaño
     // va en `useLayoutEffect` pre-paint en `PdfPage`); jsdom no observa el
     // timing de pintado, así que el no-flash se verifica manual, no aquí.
+    // El commit compensa por medición: si el layout nuevo desplazó el
+    // contenido (R0→R1), el scroll se restituye en la misma medida.
     const pdf = makePdf(1)
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
     const scroller = screen.getByTestId('preview-pages')
+    stubWrapRects(screen.getByRole('document'), [
+      { left: 0, top: 0 },
+      { left: 10, top: 20 },
+      { left: 25, top: 20 },
+    ])
     fireEvent.pointerDown(scroller, {
       pointerId: 1,
       pointerType: 'touch',
@@ -289,10 +312,11 @@ describe('PdfPreview', () => {
     fireEvent.pointerUp(scroller, { pointerId: 2 })
     expect(scroller.style.touchAction).toBe('pan-x pan-y')
     // Al soltar se confirma la escala real (el transform se retira) y el
-    // ancla queda clavada: (0 + 75×2.25 − 75) = 93.75, sin salto.
+    // desplazamiento medido (25−10) se restituye en el scroll: 0 + 15.
     expect(screen.getByText('225 %')).toBeDefined()
     expect(screen.getByRole('document').style.transform).toBe('')
-    expect(scroller.scrollLeft).toBeCloseTo(93.75)
+    expect(scroller.scrollLeft).toBe(15)
+    expect(scroller.scrollTop).toBe(0)
     await flush()
   })
 
@@ -301,6 +325,11 @@ describe('PdfPreview', () => {
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
     const scroller = screen.getByTestId('preview-pages')
+    stubWrapRects(screen.getByRole('document'), [
+      { left: 0, top: 0 },
+      { left: 5, top: 5 },
+      { left: 25, top: 0 },
+    ])
     fireEvent.pointerDown(scroller, {
       pointerId: 1,
       pointerType: 'touch',
@@ -333,7 +362,9 @@ describe('PdfPreview', () => {
       '83.88',
     )
     expect(screen.getByText('121 %')).toBeDefined()
-    // Al soltar con el dedo en (40,0) el ancla queda clavada sin salto.
+    // Al soltar con el dedo en (40,0) se confirma y la sonda restituye el
+    // desplazamiento medido entre layouts (20 en X, −5 en Y). La suelta no
+    // mueve el ancla: vale el `mid` del último tick (−11.11 + 20 ≈ 8.89).
     fireEvent.pointerUp(scroller, {
       pointerId: 1,
       pointerType: 'touch',
@@ -342,7 +373,8 @@ describe('PdfPreview', () => {
     })
     fireEvent.pointerUp(scroller, { pointerId: 2 })
     expect(screen.getByText('121 %')).toBeDefined()
-    expect(scroller.scrollLeft).toBeCloseTo(6.51, 1)
+    expect(scroller.scrollLeft).toBeCloseTo(8.89, 1)
+    expect(scroller.scrollTop).toBe(-5)
     await flush()
   })
 
@@ -351,6 +383,11 @@ describe('PdfPreview', () => {
     render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
     await screen.findByLabelText('Página 1 de 1')
     const scroller = screen.getByTestId('preview-pages')
+    stubWrapRects(screen.getByRole('document'), [
+      { left: 0, top: 0 },
+      { left: 7, top: 3 },
+      { left: 9, top: 3 },
+    ])
     // Primer tap.
     fireEvent.pointerDown(scroller, {
       pointerId: 1,
@@ -377,8 +414,8 @@ describe('PdfPreview', () => {
     expect(screen.getByText('165 %')).toBeDefined()
     fireEvent.pointerUp(scroller, { pointerId: 1 })
     expect(screen.getByText('165 %')).toBeDefined()
-    // Ancla clavada al confirmar: 50×e^0.5 − 50 ≈ 32.44.
-    expect(scroller.scrollLeft).toBeCloseTo(32.44, 1)
+    // El commit restituye el desplazamiento medido (9−7): 0 + 2.
+    expect(scroller.scrollLeft).toBe(2)
     // El dblclick sintético del navegador tras el arrastre se ignora.
     fireEvent.doubleClick(scroller)
     expect(screen.getByText('165 %')).toBeDefined()

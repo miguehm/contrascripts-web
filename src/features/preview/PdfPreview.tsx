@@ -36,7 +36,6 @@ import {
   contentPointUnder,
   dragZoomFactor,
   pinchScale,
-  scrollForAnchor,
   wheelFactor,
 } from '@/hooks/usePreviewZoom'
 import { PdfPage } from './PdfPage'
@@ -127,15 +126,14 @@ export function PdfPreview({
   const pinchEndRef = useRef(0)
   const dragEndRef = useRef(0)
   const gestureRef = useRef<GestureState | null>(null)
-  const pendingAnchorRef = useRef<{
-    ax: number
-    ay: number
-    wx: number
-    wy: number
-    midX: number
-    midY: number
-    base: number
-    newScale: number
+  // Sonda del commit: rect visual + scroll justo antes de confirmar, para
+  // compensar post-layout lo que el layout nuevo desplace (centrado,
+  // redondeos), mida lo que mida la causa.
+  const pendingProbeRef = useRef<{
+    left: number
+    top: number
+    scrollLeft: number
+    scrollTop: number
   } | null>(null)
   const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scaleRef = useRef(scale)
@@ -232,52 +230,54 @@ export function PdfPreview({
     [],
   )
 
-  /** Confirma el gesto: escala real + un único ajuste de scroll post-layout.
-   * Con el re-anclaje por tick la deriva es ~cero y la corrección es no-op;
-   * si se pasa el punto de suelta se refresca el `mid` antes de confirmar.
-   * Devuelve la escala confirmada (o null si no había gesto). */
-  const commitGesture = useCallback(
-    (clientX?: number, clientY?: number): number | null => {
-      if (wheelTimerRef.current !== null) {
-        clearTimeout(wheelTimerRef.current)
-        wheelTimerRef.current = null
-      }
-      let g = gestureRef.current
-      if (!g) return null
-      if (clientX !== undefined && clientY !== undefined) {
-        retarget(clientX, clientY, g.k)
-        g = gestureRef.current
-        if (!g) return null
-      }
-      const newScale = clampZoom(g.base * g.k)
-      gestureRef.current = null
-      setGestureState(null)
-      if (Math.abs(newScale - g.base) < COMMIT_EPS) return g.base
-      pendingAnchorRef.current = {
-        ax: g.ax,
-        ay: g.ay,
-        wx: g.wx,
-        wy: g.wy,
-        midX: g.midX,
-        midY: g.midY,
-        base: g.base,
-        newScale,
-      }
-      zoomRef.current.setScale(newScale)
-      return newScale
-    },
-    [retarget],
-  )
-
-  // Único ajuste de scroll por gesto, ya con el DOM nuevo y pre-paint: lleva
-  // el ancla (clavada durante todo el gesto) a su posición del viewport.
-  useLayoutEffect(() => {
-    const a = pendingAnchorRef.current
+  /** Confirma el gesto: escala real + compensación post-layout por medición.
+   * El `mid` vigente es el del último tick: el dedo que se levanta no debe
+   * mover el ancla (la suelta no es punto de agarre). La sonda
+   * (`pendingProbeRef`) guarda el rect visual con transform y el scroll
+   * vigentes: el layout effect compara contra el rect ya sin transform y
+   * restituye la diferencia. Así da igual que el origen del contenido se
+   * mueva entre layouts (régimen centrado ~100-140%, donde la hoja es más
+   * estrecha que el contenedor) o haya redondeos fraccionales: lo medido se
+   * corrige exacto. Devuelve la escala confirmada (o null si no hay gesto). */
+  const commitGesture = useCallback((): number | null => {
+    if (wheelTimerRef.current !== null) {
+      clearTimeout(wheelTimerRef.current)
+      wheelTimerRef.current = null
+    }
+    const g = gestureRef.current
+    if (!g) return null
+    const newScale = clampZoom(g.base * g.k)
+    gestureRef.current = null
+    setGestureState(null)
+    if (Math.abs(newScale - g.base) < COMMIT_EPS) return g.base
+    const wrap = docWrapRef.current
     const el = scrollRef.current
-    if (!a || !el) return
-    pendingAnchorRef.current = null
-    el.scrollLeft = scrollForAnchor(a.wx, a.ax, a.base, a.newScale, a.midX)
-    el.scrollTop = scrollForAnchor(a.wy, a.ay, a.base, a.newScale, a.midY)
+    if (wrap && el) {
+      const r = wrap.getBoundingClientRect()
+      pendingProbeRef.current = {
+        left: r.left,
+        top: r.top,
+        scrollLeft: el.scrollLeft,
+        scrollTop: el.scrollTop,
+      }
+    }
+    zoomRef.current.setScale(newScale)
+    return newScale
+  }, [])
+
+  // Compensación del commit por medición, pre-paint y una sola vez: si el
+  // layout nuevo desplazó el contenido respecto a lo que se veía con el
+  // transform, se devuelve el scroll lo mismo que se desplazó. Cuando la
+  // conmutación es perfecta el delta es 0 (no-op).
+  useLayoutEffect(() => {
+    const p = pendingProbeRef.current
+    const wrap = docWrapRef.current
+    const el = scrollRef.current
+    if (!p || !wrap || !el) return
+    pendingProbeRef.current = null
+    const r = wrap.getBoundingClientRect()
+    el.scrollLeft = p.scrollLeft + (r.left - p.left)
+    el.scrollTop = p.scrollTop + (r.top - p.top)
   }, [scale])
 
   // `Ctrl/Cmd+rueda` sobre el contenedor (trackpad de desktop). Listener
@@ -318,12 +318,7 @@ export function PdfPreview({
     }
   }, [startCapture, retarget, commitGesture])
 
-  const endPointer = (
-    id: number,
-    el: HTMLElement | null,
-    clientX?: number,
-    clientY?: number,
-  ) => {
+  const endPointer = (id: number, el: HTMLElement | null) => {
     const tracked = pointersRef.current.get(id)
     pointersRef.current.delete(id)
 
@@ -331,7 +326,7 @@ export function PdfPreview({
     if (dragRef.current && pointersRef.current.size < 2) {
       dragRef.current = null
       if (el) el.style.touchAction = 'pan-x pan-y'
-      commitGesture(clientX, clientY)
+      commitGesture()
       dragEndRef.current = Date.now()
       tapRef.current = null
       return
@@ -341,7 +336,7 @@ export function PdfPreview({
       pinchRef.current = null
       // Restaura el scroll nativo de un dedo.
       if (el) el.style.touchAction = 'pan-x pan-y'
-      commitGesture(clientX, clientY)
+      commitGesture()
       pinchEndRef.current = Date.now()
       tapRef.current = null
       return
@@ -538,12 +533,8 @@ export function PdfPreview({
             )
           }
         }}
-        onPointerUp={(e) =>
-          endPointer(e.pointerId, e.currentTarget, e.clientX, e.clientY)
-        }
-        onPointerCancel={(e) =>
-          endPointer(e.pointerId, e.currentTarget, e.clientX, e.clientY)
-        }
+        onPointerUp={(e) => endPointer(e.pointerId, e.currentTarget)}
+        onPointerCancel={(e) => endPointer(e.pointerId, e.currentTarget)}
         onDoubleClick={() => {
           // El navegador puede sintetizar dblclick tras un arrastre: el zoom
           // ya quedó confirmado, no resetear.
