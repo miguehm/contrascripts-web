@@ -484,11 +484,26 @@ export function PdfPreview({
           clientY - rect.top,
         )
         if (!hit) return
+        // Hint posicional para desambiguar repeticiones (la 2ª "está" del
+        // documento debe ir a la 2ª del fuente, no a la 1ª): ítems de la
+        // página en orden + ítems de las páginas previas en orden.
+        const prevItems: string[] = []
+        const prevPages = [...store.pages.entries()]
+          .filter(([num]) => num < pageNumber)
+          .sort(([a], [b]) => a - b)
+        for (const [, pageItems] of prevPages) {
+          for (const it of pageItems) prevItems.push(it.str ?? '')
+        }
         const offset = resolveJumpOffset(
           doc,
           source,
           hit.item.str,
           hit.charIndex,
+          {
+            itemIndex: hit.itemIndex,
+            pageItems: items.map((it) => it.str ?? ''),
+            prevItems,
+          },
         )
         if (offset === null) return
         onJumpToSource(offset)

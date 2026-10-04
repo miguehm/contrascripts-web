@@ -28,6 +28,8 @@ export interface ItemHit {
   item: PdfTextItem
   /** Índice del carácter más cercano al clic dentro de `item.str`. */
   charIndex: number
+  /** Posición del ítem en el array de `getTextContent()` (orden de lectura). */
+  itemIndex: number
 }
 
 /**
@@ -78,8 +80,9 @@ export function itemRect(
  *
  * Courier Prime es monoespaciada —también en el PDF que genera el renderer—,
  * así que el ancho del ítem se reparte por igual entre sus caracteres y la
- * posición horizontal da el índice sin medir la fuente. El redondeo elige el
- * carácter cuyo centro está bajo el cursor.
+ * posición horizontal da el índice sin medir la fuente. Se usa `floor`: el
+ * carácter `k` ocupa `[k*w, (k+1)*w)` y su centro (`k+0.5`) pertenece a `k`;
+ * con `round` el centro redondeaba a `k+1` (off-by-one sistemático).
  */
 export function charIndexAt(
   item: PdfTextItem,
@@ -89,7 +92,7 @@ export function charIndexAt(
   const len = item.str.length
   if (len === 0 || rect.width <= 0) return 0
   const raw = ((x - rect.left) / rect.width) * len
-  return Math.min(len - 1, Math.max(0, Math.round(raw)))
+  return Math.min(len - 1, Math.max(0, Math.floor(raw)))
 }
 
 /** Distancia de un punto a una caja (0 si está dentro). */
@@ -125,7 +128,8 @@ export function pickItemAt(
 ): ItemHit | null {
   let best: ItemHit | null = null
   let bestDist = Number.POSITIVE_INFINITY
-  for (const item of items) {
+  for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+    const item = items[itemIndex]!
     // Los ítems vacíos son los saltos de línea que gofpdf escribe entre
     // bloques: sin texto no hay nada a dónde saltar.
     if (!item.str || !item.str.trim()) continue
@@ -134,7 +138,7 @@ export function pickItemAt(
     const dist = distanceToRect(rect, x, y)
     if (dist > tolerance || dist >= bestDist) continue
     bestDist = dist
-    best = { item, charIndex: charIndexAt(item, rect, x) }
+    best = { item, charIndex: charIndexAt(item, rect, x), itemIndex }
   }
   return best
 }

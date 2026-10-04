@@ -724,6 +724,48 @@ describe('salto al editor (REVIEW.md punto 4)', () => {
     expect(onJumpToSource).toHaveBeenCalledWith(source.indexOf('blanket'))
   })
 
+  it('el doble clic en una palabra repetida salta a su párrafo (no al primero)', async () => {
+    // Repro del bug: "está" en dos párrafos; el clic en el segundo iba al
+    // primero porque `resolveJumpOffset` devolvía el primer match.
+    const dupSource = ['Todo está en calma.', '', 'Nada está claro.'].join('\n')
+    const dupDoc = {
+      titlePage: {},
+      elements: [
+        { type: 'action', line: 1, text: 'Todo está en calma.' },
+        { type: 'action', line: 3, text: 'Nada está claro.' },
+      ],
+    } as unknown as Document
+    const pdf = makePdfWithText([
+      textItem('Todo está en calma.', 72, 700, 140),
+      textItem('Nada está claro.', 72, 650, 119),
+    ])
+    const onJumpToSource = vi.fn()
+    render(
+      <Harness
+        preview={makePreview({ pdf, numPages: 1 })}
+        doc={dupDoc}
+        source={dupSource}
+        onJumpToSource={onJumpToSource}
+      />,
+    )
+    await screen.findByLabelText('Página 1 de 1')
+    const page = document.querySelector<HTMLElement>('[data-page="1"]')!
+    stubPageRect(page)
+    await flush()
+
+    // Segundo ítem (caja y=130..142): clic en su "está" ('Nada está claro.'
+    // tiene 16 letras en 119px; la "e" de "está" es el índice 5).
+    fireEvent.doubleClick(page, {
+      clientX: 72 + (119 / 16) * 5 + 2,
+      clientY: 136,
+    })
+    await flush()
+
+    expect(onJumpToSource).toHaveBeenCalledWith(
+      dupSource.indexOf('está', dupSource.indexOf('está') + 1),
+    )
+  })
+
   it('no salta con un clic en el margen, lejos de todo texto', async () => {
     const { onJumpToSource, page } = await renderReady([
       textItem('Stars blanket the void.'),

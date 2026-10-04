@@ -2,7 +2,7 @@
 // Funciones puras: sin DOM, sin pdf.js y sin el parser — el `Document` es un
 // fixture a mano con las mismas líneas que el parser emitiría.
 import { describe, expect, it } from 'vitest'
-import { resolveJumpOffset } from './sourceMap'
+import { extractWordContext, resolveJumpOffset } from './sourceMap'
 import type { Document } from '@/vendor/fountain.mjs'
 
 /** Documento mínimo: solo `elements` y `titlePageLines` importan aquí. */
@@ -168,5 +168,139 @@ describe('resolveJumpOffset', () => {
       start + text.length - 1,
     )
     expect(resolveJumpOffset(doc, source, text, -5)).toBe(start)
+  })
+})
+
+describe('extractWordContext', () => {
+  it('recorta la palabra bajo el cursor con ±2 vecinas', () => {
+    const ctx = extractWordContext('Stars blanket the void.', 6)
+    expect(ctx?.word).toBe('BLANKET')
+    // El contexto es por palabras (±2): la puntuación final no es palabra.
+    expect(ctx?.context).toBe('STARS BLANKET THE VOID')
+    expect(ctx?.wordOffset).toBe('STARS '.length)
+    expect(ctx?.charOffset).toBe(0)
+  })
+
+  it('el charOffset apunta al carácter clicado dentro de la palabra', () => {
+    const ctx = extractWordContext('Stars blanket the void.', 8)
+    expect(ctx?.word).toBe('BLANKET')
+    expect(ctx?.charOffset).toBe(2)
+  })
+
+  it('un clic en el espacio se queda con la palabra de la izquierda', () => {
+    const ctx = extractWordContext('Nada está claro.', 4)
+    expect(ctx?.word).toBe('NADA')
+  })
+
+  it('devuelve null sin palabra (solo espacios o marcado)', () => {
+    expect(extractWordContext('   ', 1)).toBeNull()
+    expect(extractWordContext('**', 0)).toBeNull()
+  })
+})
+
+describe('resolveJumpOffset con hint (repeticiones)', () => {
+  const dupSource = ['Todo está en calma.', '', 'Nada está claro.'].join('\n')
+  function dupDoc(): Document {
+    return makeDoc([
+      { type: 'action', line: 1, text: 'Todo está en calma.' },
+      { type: 'action', line: 3, text: 'Nada está claro.' },
+    ])
+  }
+  const firstAt = dupSource.indexOf('está')
+  const secondAt = dupSource.indexOf('está', firstAt + 1)
+
+  it('sin hint mantiene el modo clásico: gana el primer elemento', () => {
+    expect(resolveJumpOffset(dupDoc(), dupSource, 'está', 0)).toBe(firstAt)
+  })
+
+  it('la segunda "está" del PDF lleva a la segunda del fuente (repro del bug)', () => {
+    // El ítem clicado es el segundo; el anterior ya trae una "está".
+    const offset = resolveJumpOffset(dupDoc(), dupSource, 'está', 0, {
+      itemIndex: 1,
+      pageItems: ['está', 'está'],
+      prevItems: [],
+    })
+    expect(offset).toBe(secondAt)
+  })
+
+  it('la primera "está" sigue yendo a la primera con hint', () => {
+    const offset = resolveJumpOffset(dupDoc(), dupSource, 'está', 0, {
+      itemIndex: 0,
+      pageItems: ['está', 'está'],
+      prevItems: [],
+    })
+    expect(offset).toBe(firstAt)
+  })
+
+  it('la palabra clicada dentro de una línea va a su párrafo', () => {
+    // Clic en la "está" de 'Nada está claro.' (índice 5 del ítem).
+    const offset = resolveJumpOffset(
+      dupDoc(),
+      dupSource,
+      'Nada está claro.',
+      5,
+      {
+        itemIndex: 1,
+        pageItems: ['Todo está en calma.', 'Nada está claro.'],
+        prevItems: [],
+      },
+    )
+    expect(offset).toBe(secondAt)
+  })
+
+  it('dos "está" en el mismo ítem: el clic en la segunda cuenta', () => {
+    const text = 'está bien y está mal'
+    const src = [text, '', 'final está aquí'].join('\n')
+    const doc = makeDoc([
+      { type: 'action', line: 1, text },
+      { type: 'action', line: 3, text: 'final está aquí' },
+    ])
+    // Segunda "está" del ítem (índice 13, la "s"): ordinal 1 en el PDF,
+    // y el cursor cae en el carácter clicado, no al inicio de la palabra.
+    const offset = resolveJumpOffset(doc, src, text, 13, {
+      itemIndex: 0,
+      pageItems: [text],
+      prevItems: [],
+    })
+    expect(offset).toBe(src.indexOf('está', 1) + 1)
+  })
+
+  it('las páginas previas cuentan para el ordinal', () => {
+    const offset = resolveJumpOffset(dupDoc(), dupSource, 'está', 0, {
+      itemIndex: 0,
+      pageItems: ['está'],
+      prevItems: ['está'],
+    })
+    expect(offset).toBe(secondAt)
+  })
+
+  it('el ordinal que se pasa del final sujeta al último (notas no impresas)', () => {
+    const offset = resolveJumpOffset(dupDoc(), dupSource, 'está', 0, {
+      itemIndex: 5,
+      pageItems: ['está', 'x', 'x', 'x', 'x', 'está'],
+      prevItems: [],
+    })
+    expect(offset).toBe(secondAt)
+  })
+
+  it('la tilde descompuesta (NFD) del PDF casa con la NFC del fuente', () => {
+    const nfd = 'está'.normalize('NFD')
+    const offset = resolveJumpOffset(dupDoc(), dupSource, nfd, 0, {
+      itemIndex: 1,
+      pageItems: [nfd, nfd],
+      prevItems: [],
+    })
+    expect(offset).toBe(secondAt)
+  })
+
+  it('devuelve null si la palabra no está en el guion aunque haya hint', () => {
+    const doc = dupDoc()
+    expect(
+      resolveJumpOffset(doc, dupSource, 'INVENTADA', 0, {
+        itemIndex: 0,
+        pageItems: ['INVENTADA'],
+        prevItems: [],
+      }),
+    ).toBeNull()
   })
 })

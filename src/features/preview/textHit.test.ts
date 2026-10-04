@@ -76,6 +76,13 @@ describe('charIndexAt', () => {
     expect(charIndexAt(letters, rect, 5000)).toBe(4)
   })
 
+  it('el centro del carácter pertenece a ese carácter (no al siguiente)', () => {
+    // Cada letra ocupa 10px desde x=100: el centro de la primera (x=105)
+    // es la letra 0; con `round` daba 1 (off-by-one sistemático).
+    expect(charIndexAt(letters, rect, 105)).toBe(0)
+    expect(charIndexAt(letters, rect, 115)).toBe(1)
+  })
+
   it('no revienta con un ítem vacío o sin ancho', () => {
     const empty = item('', 0, 0, 0)
     expect(charIndexAt(empty, itemRect(empty, viewport), 0)).toBe(0)
@@ -123,6 +130,14 @@ describe('pickItemAt', () => {
     // y=101 está a 9px de las dos cajas: gana la primera.
     const hit = pickItemAt([primera, cercano], viewport, 100, 101, 12)
     expect(hit?.item.str).toBe('primera')
+  })
+
+  it('devuelve el índice del ítem en orden de lectura', () => {
+    const hit = pickItemAt([primera, segunda], viewport, 203, 135)
+    expect(hit?.itemIndex).toBe(1)
+    const hitFirst = pickItemAt([primera, segunda], viewport, 75, 86)
+    expect(hitFirst?.item.str).toBe('primera')
+    expect(hitFirst?.itemIndex).toBe(0)
   })
 
   it('devuelve null en el margen, sin inventar un destino', () => {
