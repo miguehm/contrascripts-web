@@ -8,7 +8,11 @@ import { EditorState } from '@codemirror/state'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EditorView } from '@codemirror/view'
 import { Editor } from './Editor'
-import { jumpToOffset } from './jumpToOffset'
+import {
+  JUMP_TOP_FRACTION,
+  jumpMarginForHeight,
+  jumpToOffset,
+} from './jumpToOffset'
 import { ThemeProvider } from '@/hooks/useTheme'
 
 afterEach(cleanup)
@@ -110,13 +114,17 @@ describe('Editor', () => {
 })
 
 describe('jumpToOffset (punto 4)', () => {
-  /** Vista mínima: `jumpToOffset` solo necesita `state` y `dispatch`. */
-  function makeView(doc: string) {
+  /**
+   * Vista mínima: `jumpToOffset` necesita `state`, `dispatch` y la altura
+   * visible (`scrollDOM.clientHeight`) para el margen del 25%.
+   */
+  function makeView(doc: string, clientHeight = 800) {
     const state = EditorState.create({ doc })
     const dispatched: unknown[] = []
     const focus = vi.fn()
     const view = {
       state,
+      scrollDOM: { clientHeight },
       focus,
       dispatch: (tr: { selection: { anchor: number } }) => {
         dispatched.push(tr)
@@ -126,15 +134,13 @@ describe('jumpToOffset (punto 4)', () => {
   }
 
   it('coloca el cursor en el offset y enfoca la vista', () => {
-    // `scrollIntoView` en la misma transacción es lo que trae el texto.
+    // Posición + scroll dirigido + flash en la misma transacción.
     const { view, dispatched, focus } = makeView('una línea\notra')
     jumpToOffset(view, 12)
 
     expect(dispatched).toHaveLength(1)
-    expect(dispatched[0]).toMatchObject({
-      selection: { anchor: 12 },
-      scrollIntoView: true,
-    })
+    expect(dispatched[0]).toMatchObject({ selection: { anchor: 12 } })
+    expect((dispatched[0] as { effects: unknown[] }).effects).toHaveLength(2)
     expect(focus).toHaveBeenCalled()
   })
 
@@ -172,5 +178,34 @@ describe('jumpToOffset (punto 4)', () => {
     const { view, dispatched } = makeView('corto')
     jumpToOffset(view, 2)
     expect(dispatched[0]).toMatchObject({ selection: { anchor: 2 } })
+  })
+
+  it('funciona sin altura visible (jsdom sin layout)', () => {
+    // `clientHeight` 0 → `yMargin` 0: el salto y el flash siguen yendo.
+    const { view, dispatched, focus } = makeView('corto', 0)
+    jumpToOffset(view, 2)
+    expect(dispatched).toHaveLength(1)
+    expect(dispatched[0]).toMatchObject({ selection: { anchor: 2 } })
+    expect(focus).toHaveBeenCalled()
+  })
+})
+
+describe('jumpMarginForHeight (salto al 25%)', () => {
+  it('es el 25% de la altura visible', () => {
+    expect(JUMP_TOP_FRACTION).toBe(0.25)
+    expect(jumpMarginForHeight(800)).toBe(200)
+    expect(jumpMarginForHeight(1000)).toBe(250)
+  })
+
+  it('cae a 0 sin altura medible', () => {
+    expect(jumpMarginForHeight(0)).toBe(0)
+    expect(jumpMarginForHeight(-10)).toBe(0)
+    expect(jumpMarginForHeight(Number.NaN)).toBe(0)
+  })
+
+  it('nunca alcanza la altura del editor (lo exige CodeMirror)', () => {
+    // `yMargin` debe ser menor que la altura: con 1px no hay margen posible.
+    expect(jumpMarginForHeight(1)).toBe(0)
+    expect(jumpMarginForHeight(2)).toBeLessThan(2)
   })
 })

@@ -163,6 +163,35 @@
   }
 }
 
+/* Punto 4: el flash de la línea destino tras saltar desde el PDF aparece
+   sólido al instante y AGUANTA (~40% de meseta) antes de atenuarse: el fundido
+   inmediato anterior moría antes de que los ojos llegaran del PDF al editor.
+   La duración (2s) debe coincidir con `JUMP_FLASH_DURATION_MS` de
+   `jumpHighlight.ts`: cambiar ambas a la vez. El fondo estático lo pone
+   `fountainTheme.ts` y es lo que queda con `prefers-reduced-motion`: el salto
+   sigue moviendo el cursor, solo pierde el fundido. OJO: `animation`, no
+   `transition`: la transición retardaba la aparición y el flash moría antes
+   de verse del todo. */
+@keyframes jump-flash {
+  0% {
+    background-color: rgba(217, 119, 6, 0.55);
+  }
+  40% {
+    background-color: rgba(217, 119, 6, 0.55);
+  }
+  100% {
+    background-color: rgba(217, 119, 6, 0);
+  }
+}
+.cm-jump-flash {
+  animation: jump-flash 2s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-jump-flash {
+    animation: none;
+  }
+}
+
 /* REVIEW.md punto 4: scrollbar fina a juego con Radix `ScrollArea`
    (thumb `bg-border` redondeado). Vía CSS nativo para no romper el
    scroller interno de CodeMirror ni los gestos de `PdfPreview`.

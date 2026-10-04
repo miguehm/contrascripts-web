@@ -113,6 +113,25 @@ const fountainLayout = EditorView.theme({
   '.cm-activeLine': {
     backgroundColor: 'color-mix(in srgb, var(--accent) 45%, transparent)',
   },
+  // Punto 4: flash efímero de la línea destino tras saltar desde el PDF.
+  // Ámbar de marca (caret, selección, anillo de foco), un punto más fuerte
+  // que la selección (`rgba(217,119,6,0.25)`) para destacar sobre ella; no
+  // amarillo marcador, ni gris `--accent` (indistinguible del
+  // `.cm-activeLine`), ni índigo `--syntax` (reservado a tokens Fountain).
+  // OJO: rgba directo, no `color-mix(... transparent)`: mezclar contra negro
+  // transparente embarra los canales (daba `rgba(65,36,2,0.3)`, invisible en
+  // dark). Va con selector combinado para ganar siempre a `.cm-activeLine`:
+  // el salto deja el cursor en esa línea y ambas clases coexisten. La
+  // animación de aparición/retirada y el `prefers-reduced-motion` viven en
+  // `src/index.css` (CSS plano, sin pelear con el tipado del theme de
+  // CodeMirror); con animación desactivada este fondo estático es lo que se ve
+  // (coincide con la meseta de la animación).
+  '.cm-jump-flash': {
+    backgroundColor: 'rgba(217, 119, 6, 0.55)',
+  },
+  '.cm-activeLine.cm-jump-flash': {
+    backgroundColor: 'rgba(217, 119, 6, 0.55)',
+  },
   '.cm-activeLineGutter': {
     backgroundColor: 'transparent',
     color: 'var(--foreground)',

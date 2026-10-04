@@ -281,6 +281,81 @@ test('doble clic en el documento lleva el cursor a esa línea', async ({
   await expect
     .poll(() => readCaretLine(page), { timeout: 10_000 })
     .toBe(heading)
+  // El flash marca la línea destino y se retira solo (~2s): si el salto ya
+  // resolvió hace más de eso, puede haberse ido antes del primer poll y la
+  // última aserción pasa directa; en el caso típico se ve aparecer y salir.
+  await expect(page.locator('.cm-jump-flash:visible')).toBeVisible({
+    timeout: 5_000,
+  })
+  // La clase no basta: el fondo computado debe llevar el ámbar de marca. Esto
+  // caza regresiones de pintado (p. ej. un `color-mix` contra transparente que
+  // embarra los canales) que la aserción de arriba no ve.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector('.cm-content .cm-jump-flash')
+          if (!el) return ''
+          return getComputedStyle(el as HTMLElement).backgroundColor
+        }),
+      { timeout: 5_000 },
+    )
+    .toContain('217, 119, 6')
+  // El flash sobrevive al viaje de los ojos: 1s después del ámbar sigue vivo
+  // (meseta de la animación) y luego se retira solo.
+  await page.waitForTimeout(1000)
+  await expect(page.locator('.cm-jump-flash:visible')).toHaveCount(1, {
+    timeout: 5_000,
+  })
+  await expect(page.locator('.cm-jump-flash:visible')).toHaveCount(0, {
+    timeout: 10_000,
+  })
+})
+
+// Regresión del bug real: el offset de la palabra clicada casi siempre es una
+// columna a MITAD de línea, y `Decoration.line` solo decora la línea que EMPIEZA
+// en la posición dada. El test de arriba clica la primera letra del heading
+// (inicio de línea), el único caso que funcionaba sin anclar.
+test('doble clic a mitad de línea resalta la línea destino', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const heading = `EXT. MARCADOR MITAD ${Date.now()} - DIA`
+  await writeScript(page, `${heading}\n\nAcción.\n`)
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+
+  const rect = await page.locator('[data-page]').first().boundingBox()
+  expect(rect).not.toBeNull()
+  // x al ~40% del ancho de la hoja: cae en una palabra interior del heading, no
+  // en su primer carácter. Es justo el caso que el snap a inicio de línea
+  // arregla.
+  await page.mouse.dblclick(
+    rect!.x + rect!.width * 0.4,
+    rect!.y + rect!.height * 0.096,
+  )
+
+  await expect
+    .poll(() => readCaretLine(page), { timeout: 10_000 })
+    .toBe(heading)
+  await expect(page.locator('.cm-jump-flash:visible')).toBeVisible({
+    timeout: 5_000,
+  })
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const el = document.querySelector('.cm-content .cm-jump-flash')
+          if (!el) return ''
+          return getComputedStyle(el as HTMLElement).backgroundColor
+        }),
+      { timeout: 5_000 },
+    )
+    .toContain('217, 119, 6')
 })
 
 test('el doble clic ya no alterna el zoom', async ({ page }) => {

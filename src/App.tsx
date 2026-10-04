@@ -217,6 +217,11 @@ export default function App() {
   const editorViewsRef = useRef<
     { view: EditorView; container: HTMLElement | null }[]
   >([])
+  // Salto pendiente: en móvil (tab preview) y en desktop con preview expandida
+  // el editor está desmontado, así que no hay vista visible donde saltar. Se
+  // guarda el offset y se aplica al montar la columna visible; si ya hubiera
+  // una visible, el salto es inmediato y esto queda en null.
+  const pendingJumpRef = useRef<number | null>(null)
   const handleViewReady = useCallback(
     (view: EditorView | null, container: HTMLElement | null) => {
       const entries = editorViewsRef.current
@@ -230,6 +235,13 @@ export default function App() {
       const at = entries.findIndex((entry) => entry.view === view)
       if (at >= 0) entries[at] = { view, container }
       else entries.push({ view, container })
+      // La columna que acaba de montar es la visible y había un salto
+      // esperando: se aplica aquí (cursor + 25% + flash) en vez de perderse.
+      if (container.offsetWidth > 0 && pendingJumpRef.current !== null) {
+        const offset = pendingJumpRef.current
+        pendingJumpRef.current = null
+        jumpToOffset(view, offset)
+      }
     },
     [],
   )
@@ -237,15 +249,20 @@ export default function App() {
   // El salto va al editor, y en móvil además cambia de tab: el documento solo
   // está visible mientras el tab Editor no lo tapa.
   const handleJumpToSource = useCallback((offset: number) => {
-    // La columna visible es la que tiene tamaño; si ninguna midiera (aún
-    // montando, o un breakpoint raro con las dos a pantalla completa) se usa la
-    // última registrada.
+    // La columna visible es la que tiene tamaño. Si no hay ninguna (editor
+    // desmontado: móvil en tab preview o preview expandida), el offset queda
+    // pendiente y `handleViewReady` lo aplica al montar la columna visible en
+    // vez de saltar a una vista oculta donde ni el cursor ni el flash se ven.
     const entries = editorViewsRef.current
-    const target =
-      entries
-        .filter((entry) => (entry.container?.offsetWidth ?? 0) > 0)
-        .at(-1) ?? entries.at(-1)
-    if (target) jumpToOffset(target.view, offset)
+    const target = entries
+      .filter((entry) => (entry.container?.offsetWidth ?? 0) > 0)
+      .at(-1)
+    if (target) {
+      pendingJumpRef.current = null
+      jumpToOffset(target.view, offset)
+    } else {
+      pendingJumpRef.current = offset
+    }
     setTab('editor')
   }, [])
 

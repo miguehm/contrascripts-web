@@ -23,6 +23,7 @@ import type { Extension } from '@codemirror/state'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { fountain } from './fountain'
 import { fountainTheme } from './fountainTheme'
+import { jumpLineHighlightField } from './jumpHighlight'
 
 interface EditorProps {
   value: string
@@ -63,6 +64,8 @@ const EXTENSIONS: Extension[] = [
   EditorView.lineWrapping,
   fountain(),
   fountainTheme(),
+  // Punto 4: flash efímero de la línea destino tras saltar desde el PDF.
+  jumpLineHighlightField,
 ]
 
 export function Editor({
