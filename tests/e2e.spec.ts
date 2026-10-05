@@ -378,6 +378,31 @@ test('el doble clic ya no alterna el zoom', async ({ page }) => {
   expect(await zoom.getAttribute('aria-label')).toBe(afterZoom)
 })
 
+// REVIEW.md 7: clic en un aviso lleva el cursor a su línea con el flash del
+// punto 4. Cabecera de escena sin hora → `SCENE_NO_TIME` (verificado contra
+// `lint.go` del parser: toda cabecera no forzada sin " - " avisa).
+test('clic en un aviso salta a su línea con highlight', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const target = 'EXT. CALLE SIN HORA'
+  await writeScript(
+    page,
+    `INT. CASA - DÍA\n\nAcción.\n\n${target}\n\nOtra acción.\n`,
+  )
+  // El trigger solo existe con avisos: abre la hoja y se clica el de L5.
+  await page.getByRole('button', { name: /avisos, \d+ avisos?/i }).click()
+  await page.getByRole('button', { name: /aviso línea 5/i }).click()
+  // El panel se cierra en el mismo gesto y el cursor cae en la línea del
+  // aviso con el flash ámbar de marca.
+  await expect(page.getByTestId('warnings-panel')).toHaveCount(0)
+  await expect.poll(() => readCaretLine(page), { timeout: 10_000 }).toBe(target)
+  await expect(page.locator('.cm-jump-flash:visible')).toBeVisible({
+    timeout: 5_000,
+  })
+})
+
 // REVIEW.md 6: cerrar y abrir el panel del preview conserva el scroll
 // exacto (mismo doc y zoom). Doc largo a propósito: muchas páginas miden su
 // tamaño async y el restore debe converger, no asentarse a medias.

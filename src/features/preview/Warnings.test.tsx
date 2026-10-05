@@ -1,4 +1,5 @@
-// src/features/preview/Warnings.test.tsx — marginalia (REVIEW.md 4).
+// src/features/preview/Warnings.test.tsx — marginalia (REVIEW.md 4) + salto
+// a la línea del aviso (REVIEW.md 7).
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -33,6 +34,7 @@ function renderPanel(
   warnings: Warning[] = SAMPLE,
   open = true,
   onClose: () => void = () => {},
+  onJumpToLine: (line: number) => void = () => {},
 ) {
   return render(
     <WarningsPanel
@@ -41,6 +43,7 @@ function renderPanel(
       onClose={onClose}
       panelId={PANEL_ID}
       triggerRef={{ current: null }}
+      onJumpToLine={onJumpToLine}
     />,
   )
 }
@@ -92,6 +95,29 @@ describe('WarningsPanel', () => {
     expect(screen.getByText('L3')).toBeDefined()
     expect(screen.getByText('foo')).toBeDefined()
     expect(screen.getByText('Falta algo')).toBeDefined()
+  })
+
+  it('cada aviso es un botón con etiqueta accesible (línea, código, mensaje)', () => {
+    renderPanel()
+    const first = screen.getByRole('button', {
+      name: /aviso línea 3: foo\. falta algo/i,
+    })
+    const second = screen.getByRole('button', {
+      name: /aviso línea 7: bar\. otro aviso/i,
+    })
+    expect(first).toBeDefined()
+    expect(second).toBeDefined()
+  })
+
+  it('clic en un aviso salta a su línea y cierra el panel (punto 7)', () => {
+    const onJumpToLine = vi.fn()
+    const onClose = vi.fn()
+    renderPanel(SAMPLE, true, onClose, onJumpToLine)
+    fireEvent.click(screen.getByRole('button', { name: /aviso línea 7/i }))
+    expect(onJumpToLine).toHaveBeenCalledTimes(1)
+    expect(onJumpToLine).toHaveBeenCalledWith(7)
+    // Cerrar en el mismo gesto revela el editor y deja ver el salto.
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('abierto sin avisos muestra el vacío', () => {
@@ -153,5 +179,36 @@ describe('WarningsPanel', () => {
     fireEvent.pointerDown(triggers[0], { bubbles: true })
     fireEvent.pointerDown(triggers[1], { bubbles: true })
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('pointerdown dentro del panel ajeno no dispara el cierre', () => {
+    // Regresión del punto 7: las dos columnas coexisten montadas y el
+    // `pointerdown` dentro del panel de una cerraba la otra antes del
+    // `click`, desmontando el botón: el salto a la línea se perdía.
+    const onCloseA = vi.fn()
+    const onCloseB = vi.fn()
+    render(
+      <>
+        <WarningsPanel
+          warnings={SAMPLE}
+          open={true}
+          onClose={onCloseA}
+          panelId="panel-a"
+          triggerRef={{ current: null }}
+        />
+        <WarningsPanel
+          warnings={SAMPLE}
+          open={true}
+          onClose={onCloseB}
+          panelId="panel-b"
+          triggerRef={{ current: null }}
+        />
+      </>,
+    )
+    const rows = screen.getAllByRole('button', { name: /aviso línea/i })
+    expect(rows).toHaveLength(4)
+    fireEvent.pointerDown(rows[0]!, { bubbles: true })
+    expect(onCloseA).not.toHaveBeenCalled()
+    expect(onCloseB).not.toHaveBeenCalled()
   })
 })
