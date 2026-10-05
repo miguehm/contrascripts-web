@@ -203,7 +203,10 @@ function stubFitMeasure(width: number): () => void {
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      constructor(private cb: ResizeObserverCallback) {}
+      private cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb
+      }
       observe() {
         this.cb([], this as unknown as ResizeObserver)
       }
