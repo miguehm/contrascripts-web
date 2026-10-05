@@ -28,6 +28,8 @@ interface EditorColumnProps {
   onWarningsOpenChange: (open: boolean) => void
   /** Recibe la vista de esta columna con su contenedor (punto 4). */
   onViewReady?: (view: EditorView | null, container: HTMLElement | null) => void
+  /** Salto a la línea de un aviso del panel (punto 7). */
+  onJumpToLine?: (line: number) => void
   /** Clave del guion + almacén para conservar cursor/scroll (punto 6). */
   persistKey?: string | null
   persistStore?: EditorPositionStore | null
@@ -43,6 +45,7 @@ export function EditorColumn({
   onViewReady,
   persistKey,
   persistStore,
+  onJumpToLine,
 }: EditorColumnProps) {
   const panelId = useId()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -74,6 +77,7 @@ export function EditorColumn({
         onClose={() => onWarningsOpenChange(false)}
         panelId={panelId}
         triggerRef={triggerRef}
+        onJumpToLine={onJumpToLine}
       />
     </div>
   )

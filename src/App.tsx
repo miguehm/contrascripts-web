@@ -26,6 +26,7 @@ import type { EditorView } from '@codemirror/view'
 import { EditorColumn } from '@/components/EditorColumn'
 import { SplitWorkspace } from '@/components/SplitWorkspace'
 import { jumpToOffset } from '@/features/editor/jumpToOffset'
+import { lineToOffset } from '@/features/editor/lineToOffset'
 import { PdfPreview } from '@/features/preview/PdfPreview'
 import { usePdfPreview } from '@/features/preview/usePdfPreview'
 import { ImportButton } from '@/features/scripts/ImportButton'
@@ -205,6 +206,16 @@ export default function App() {
     setTab('editor')
   }, [])
 
+  // REVIEW.md 7: clic en un aviso → línea del fuente en el editor. `lint()`
+  // solo trae el nº de línea, se traduce a offset y se reutiliza el camino
+  // del punto 4 (elige la columna visible, encola si está desmontada).
+  const handleJumpToLine = useCallback(
+    (line: number) => {
+      handleJumpToSource(lineToOffset(text, line))
+    },
+    [text, handleJumpToSource],
+  )
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
@@ -378,6 +389,7 @@ export default function App() {
                 onViewReady={handleViewReady}
                 persistKey={activeScriptId}
                 persistStore={editorPosition}
+                onJumpToLine={handleJumpToLine}
               />
             ) : (
               <div className="min-h-0 flex-1">
@@ -451,6 +463,7 @@ export default function App() {
                   previewScroll={previewScroll}
                   doc={doc}
                   onJumpToSource={handleJumpToSource}
+                  onJumpToLine={handleJumpToLine}
                 />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
@@ -464,6 +477,7 @@ export default function App() {
                     onViewReady={handleViewReady}
                     persistKey={activeScriptId}
                     persistStore={editorPosition}
+                    onJumpToLine={handleJumpToLine}
                   />
                 </div>
               )}

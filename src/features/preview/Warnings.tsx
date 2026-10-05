@@ -4,7 +4,9 @@
 // El trigger vive en la fila de capitular del `Editor` (slot
 // `headerAction`, coste 0px en reposo) y solo se monta si hay avisos; la
 // región viva `sr-only` anuncia el recuento siempre. El panel cae como hoja
-// desde la capitular sobre el manuscrito: nunca empuja el layout.
+// desde la capitular sobre el manuscrito: nunca empuja el layout. Cada fila
+// del panel es un botón que salta a su línea (REVIEW.md punto 7) y cierra la
+// hoja para revelar el editor.
 // Estado controlado por el padre (`App` → `useWarningsOpen`): persiste en
 // `guion.warnings.v1`.
 
@@ -86,6 +88,12 @@ interface PanelProps {
   onClose: () => void
   panelId: string
   triggerRef: React.RefObject<HTMLButtonElement | null>
+  /**
+   * Salto a la línea del aviso (REVIEW.md punto 7): cursor + scroll al 25%
+   * + flash efímero, como el doble clic del punto 4. El padre cierra el
+   * panel en el mismo gesto para revelar el editor.
+   */
+  onJumpToLine?: (line: number) => void
 }
 
 /** Hoja flotante con la lista. El padre la posiciona (anclada a la capitular). */
@@ -95,6 +103,7 @@ export function WarningsPanel({
   onClose,
   panelId,
   triggerRef,
+  onJumpToLine,
 }: PanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -112,8 +121,12 @@ export function WarningsPanel({
       // Móvil y desktop coexisten montados con distinto `panelId`: se ignora
       // el clic en CUALQUIER trigger (si no, el panel de la otra columna
       // cierra en `pointerdown` y el `click` posterior reabre con `open`
-      // obsoleto: el panel no se llega a cerrar nunca).
+      // obsoleto: el panel no se llega a cerrar nunca). Lo mismo vale para
+      // CUALQUIER panel: el de la otra columna desmontaría este en
+      // `pointerdown` y el `click` posterior caería en un botón ya
+      // desmontado (el salto del punto 7 se perdería).
       if (target.closest('[data-warnings-trigger]')) return
+      if (target.closest('[data-warnings-panel]')) return
       if (panelRef.current && !panelRef.current.contains(target)) {
         onClose()
       }
@@ -134,6 +147,7 @@ export function WarningsPanel({
       role="region"
       aria-label="Lista de avisos"
       data-testid="warnings-panel"
+      data-warnings-panel
       className="absolute inset-x-2 top-8 z-10 rounded-lg border border-border bg-popover p-2 shadow-lg ring-1 ring-foreground/10 sm:right-2 sm:left-auto sm:w-96"
     >
       {warnings.length > 0 ? (
@@ -141,15 +155,26 @@ export function WarningsPanel({
           {warnings.map((w, i) => (
             <li
               key={`${w.line}-${w.code}-${i}`}
-              className="flex items-baseline gap-2 rounded-sm border border-border bg-card px-3 py-1.5 text-[0.8125rem]"
+              className="rounded-sm border border-border bg-card text-[0.8125rem]"
             >
-              <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-                L{w.line}
-              </span>
-              <code className="shrink-0 rounded-sm border border-[var(--syntax)] px-1 font-mono text-[10px] text-[var(--syntax)] uppercase">
-                {w.code}
-              </code>
-              <span className="text-foreground">{w.message}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onJumpToLine?.(w.line)
+                  onClose()
+                }}
+                aria-label={`Aviso línea ${w.line}: ${w.code}. ${w.message}`}
+                title="Ir a la línea del aviso"
+                className="flex w-full items-baseline gap-2 rounded-sm px-3 py-1.5 text-left transition-colors hover:bg-muted/50 focus-visible:ring-1 focus-visible:ring-[var(--ring)] focus-visible:outline-none"
+              >
+                <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+                  L{w.line}
+                </span>
+                <code className="shrink-0 rounded-sm border border-[var(--syntax)] px-1 font-mono text-[10px] text-[var(--syntax)] uppercase">
+                  {w.code}
+                </code>
+                <span className="text-foreground">{w.message}</span>
+              </button>
             </li>
           ))}
         </ul>

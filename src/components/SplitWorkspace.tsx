@@ -54,6 +54,8 @@ interface SplitWorkspaceProps {
   previewScroll: PreviewScrollStore
   doc: Document | null
   onJumpToSource: (offset: number) => void
+  /** Salto a la línea de un aviso del panel (punto 7). */
+  onJumpToLine?: (line: number) => void
 }
 
 export function SplitWorkspace({
@@ -75,6 +77,7 @@ export function SplitWorkspace({
   previewScroll,
   doc,
   onJumpToSource,
+  onJumpToLine,
 }: SplitWorkspaceProps) {
   // Leído una vez al montar: este componente solo vive en la rama split,
   // así que cada vuelta de expandir/colapsar relee el último divisor.
@@ -116,6 +119,7 @@ export function SplitWorkspace({
             onViewReady={onViewReady}
             persistKey={scriptId}
             persistStore={editorPosition}
+            onJumpToLine={onJumpToLine}
           />
         </div>
       </ResizablePanel>
