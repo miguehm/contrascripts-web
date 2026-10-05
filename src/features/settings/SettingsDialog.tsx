@@ -14,6 +14,7 @@ import {
   Settings as SettingsIcon,
   Type,
 } from 'lucide-react'
+import { cn } from 'cn'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -24,7 +25,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { AboutContent } from './AboutContent'
 import { AppearanceSection } from './sections/AppearanceSection'
 import { EditorSection } from './sections/EditorSection'
@@ -67,18 +67,18 @@ export function SettingsDialog({
           {size === 'icon-sm' ? null : 'Ajustes'}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="h-[min(34rem,85dvh)] grid-rows-[auto_minmax(0,1fr)] sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Ajustes</DialogTitle>
+          <DialogTitle className="font-semibold">Ajustes</DialogTitle>
           <DialogDescription>
-            Preferencias de apariencia, editor y vista previa. Se guardan en
-            este navegador.
+            Apariencia, editor, vista previa y más. Se guardan en este
+            navegador.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-col gap-4 sm:flex-row">
+        <div className="flex min-h-0 flex-col gap-4 overflow-hidden sm:flex-row">
           <nav
             aria-label="Secciones de ajustes"
-            className="flex shrink-0 gap-1 overflow-x-auto sm:w-40 sm:flex-col sm:overflow-visible"
+            className="-mx-1 flex shrink-0 gap-1 overflow-x-auto rounded-md bg-muted/40 p-1 px-1 sm:mx-0 sm:w-44 sm:flex-col sm:overflow-visible"
           >
             {SECTIONS.map(({ id, label, Icon }) => {
               const active = section === id
@@ -86,11 +86,16 @@ export function SettingsDialog({
                 <Button
                   key={id}
                   type="button"
-                  variant={active ? 'secondary' : 'ghost'}
+                  variant="ghost"
                   size="sm"
                   onClick={() => setSection(id)}
                   aria-current={active ? 'true' : undefined}
-                  className="justify-start"
+                  className={cn(
+                    'justify-start border-l-2 shrink-0',
+                    active
+                      ? 'border-l-primary bg-accent text-accent-foreground'
+                      : 'border-l-transparent',
+                  )}
                 >
                   <Icon aria-hidden="true" />
                   {label}
@@ -98,12 +103,7 @@ export function SettingsDialog({
               )
             })}
           </nav>
-          <Separator
-            orientation="vertical"
-            className="hidden self-stretch sm:block"
-          />
-          <Separator className="sm:hidden" />
-          <ScrollArea className="max-h-[50vh] min-h-0 flex-1 pr-4 sm:max-h-[380px]">
+          <ScrollArea className="min-h-0 flex-1 pr-3">
             {section === 'appearance' && <AppearanceSection />}
             {section === 'editor' && <EditorSection />}
             {section === 'preview' && <PreviewSection />}
