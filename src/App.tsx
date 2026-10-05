@@ -137,6 +137,7 @@ export default function App() {
     open: previewOpen,
     toggle: togglePreview,
     expanded: previewExpanded,
+    setExpanded: setPreviewExpanded,
     toggleExpanded,
   } = usePreviewOpen()
   // REVIEW.md 6: scroll del preview y cursor/scroll del editor por guion.
@@ -166,6 +167,33 @@ export default function App() {
   // guarda el offset y se aplica al montar la columna visible; si ya hubiera
   // una visible, el salto es inmediato y esto queda en null.
   const pendingJumpRef = useRef<number | null>(null)
+  // Aplica el salto cuando el editor ya tiene altura acotada. Recién montado,
+  // `height:100%` puede resolver a la altura del contenido (todo el guion
+  // "visible"): el `scrollIntoView` de `jumpToOffset` no movería nada —el
+  // cursor sí se fija— y CodeMirror da el scroll por resuelto, así que el
+  // editor quedaría arriba cuando el panel fijara su altura real. La señal de
+  // "acotado" es que el scroller tenga overflow (guion largo). El pendiente se
+  // conserva hasta aplicarlo, no al solicitarlo: cubre el doble montaje de
+  // StrictMode en desarrollo (una vista descartada no consume el salto de la
+  // superviviente). Sin scroller medible o tras 8 frames se salta igual: en un
+  // guion corto no hay scroll que hacer.
+  const applyPendingJump = useCallback((view: EditorView, offset: number) => {
+    let frames = 0
+    const step = () => {
+      if (!view.dom.isConnected) return
+      if (pendingJumpRef.current !== offset) return
+      const el = view.scrollDOM
+      const ready = !el || el.scrollHeight > el.clientHeight
+      if (ready || frames >= 8) {
+        pendingJumpRef.current = null
+        jumpToOffset(view, offset)
+        return
+      }
+      frames += 1
+      requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [])
   const handleViewReady = useCallback(
     (view: EditorView | null, container: HTMLElement | null) => {
       const entries = editorViewsRef.current
@@ -180,35 +208,45 @@ export default function App() {
       if (at >= 0) entries[at] = { view, container }
       else entries.push({ view, container })
       // La columna que acaba de montar es la visible y había un salto
-      // esperando: se aplica aquí (cursor + 25% + flash) en vez de perderse.
+      // esperando: se agenda aquí (cursor + 25% + flash) en vez de perderse.
       if (container.offsetWidth > 0 && pendingJumpRef.current !== null) {
-        const offset = pendingJumpRef.current
-        pendingJumpRef.current = null
-        jumpToOffset(view, offset)
+        applyPendingJump(view, pendingJumpRef.current)
       }
     },
-    [],
+    [applyPendingJump],
   )
 
   // El salto va al editor, y en móvil además cambia de tab: el documento solo
   // está visible mientras el tab Editor no lo tapa.
-  const handleJumpToSource = useCallback((offset: number) => {
-    // La columna visible es la que tiene tamaño. Si no hay ninguna (editor
-    // desmontado: móvil en tab preview o preview expandida), el offset queda
-    // pendiente y `handleViewReady` lo aplica al montar la columna visible en
-    // vez de saltar a una vista oculta donde ni el cursor ni el flash se ven.
-    const entries = editorViewsRef.current
-    const target = entries
-      .filter((entry) => (entry.container?.offsetWidth ?? 0) > 0)
-      .at(-1)
-    if (target) {
-      pendingJumpRef.current = null
-      jumpToOffset(target.view, offset)
-    } else {
-      pendingJumpRef.current = offset
-    }
-    setTab('editor')
-  }, [])
+  const handleJumpToSource = useCallback(
+    (offset: number) => {
+      // La columna visible es la que tiene tamaño. Si no hay ninguna (editor
+      // desmontado: móvil en tab preview o preview expandida en desktop), el
+      // offset queda pendiente y `handleViewReady` lo aplica al montar la
+      // columna visible en vez de saltar a una vista oculta donde ni el cursor
+      // ni el flash se ven.
+      const entries = editorViewsRef.current
+      const target = entries
+        .filter((entry) => (entry.container?.offsetWidth ?? 0) > 0)
+        .at(-1)
+      if (target) {
+        pendingJumpRef.current = null
+        jumpToOffset(target.view, offset)
+      } else {
+        // REVIEW.md 10: el salto sale del modo grande. Sin esto el editor
+        // seguiría desmontado y el pendiente nunca se aplicaría. Y se olvida
+        // la posición guardada del guion: al remontar, `doRestore` de `Editor`
+        // correría tras el `jumpToOffset` de `handleViewReady` y pisaría el
+        // salto con el cursor/scroll viejos. El salto define la nueva
+        // posición, que `selectionSaver` deja registrada al despacharse.
+        if (previewExpanded) setPreviewExpanded(false)
+        editorPosition.clear(activeScriptId)
+        pendingJumpRef.current = offset
+      }
+      setTab('editor')
+    },
+    [previewExpanded, setPreviewExpanded, editorPosition, activeScriptId],
+  )
 
   // REVIEW.md 7: clic en un aviso → línea del fuente en el editor. `lint()`
   // solo trae el nº de línea, se traduce a offset y se reutiliza el camino

@@ -9,7 +9,7 @@
 7. (DONE) Me gustaria que al hacer click a un item de los avisos me lleve a la linea especificada, y que tambien tenga un highlight (como cuando se selecciona una letra en el previewer)
 8. (DONE) En desktop me gustaria que al hacer click en el numero del porcentaje este en lugar de ajustarlo al 100% fijo, lo ajuste al ancho de la ventana del previewer, un comportamiento parecido al que tiene la versión movil
 9. (DONE) Me gustaria crear un menú de configuraciones en el panel izquierdo, donde está el "acerca de", ahora será de configuraciones, el propio about se meterá ahí, me gustaria que definieras que configuraciones se deben meter ahí
-10. Al estar en previewer completo (editor oculto), se traslade la logica del doble click en una palabra, al hacerlo, saldrá del modo preview completo y me llevara a la palabra en el editor, el mismo comportamiento que ya está pero ahora en el preview ancho completo
+10. (DONE) Al estar en previewer completo (editor oculto), se traslade la logica del doble click en una palabra, al hacerlo, saldrá del modo preview completo y me llevara a la palabra en el editor, el mismo comportamiento que ya está pero ahora en el preview ancho completo
 11. En la barra superior me gustaria agregar un boton de "ayuda" donde muestre un cheatsheet de como escribir elementos fountain
 12. Verificar que no existen escenarios donde los guiones se pierdan
 13. Estrategia de importación/exportación de guiones
