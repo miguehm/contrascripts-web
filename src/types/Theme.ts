@@ -1,8 +1,12 @@
-// src/types/Theme.ts — tema de la UI (§8 del PLAN.md).
+// src/types/Theme.ts — tema de la UI (§8 del PLAN.md + REVIEW.md punto 9).
 //
-// Valores persistidos en localStorage (`guion.theme.v1`): solo
-// `dark | light`. Sin modo `system` a propósito: el plan fija dos temas
-// editoriales (Warm / Cinematic) y el arranque por defecto es `light`.
+// Tres preferencias: `light` y `dark` (temas editoriales) más `system`, que
+// sigue a `prefers-color-scheme` del SO. Persistidas en localStorage
+// (`guion.theme.v1`); `system` es solo preferencia y nunca se aplica
+// directa: el hook la resuelve a `ResolvedTheme` antes de tocar `.dark`.
 
-/** Tema activo de la aplicación. */
-export type Theme = 'dark' | 'light'
+/** Preferencia de tema guardable (incluye seguir al sistema). */
+export type Theme = 'light' | 'dark' | 'system'
+
+/** Tema efectivamente aplicado (`system` ya resuelto según el SO). */
+export type ResolvedTheme = 'light' | 'dark'

@@ -30,27 +30,29 @@ beforeEach(() => {
 })
 
 describe('loadTheme', () => {
-  it('sin localStorage o sin dato → light', () => {
+  it('sin localStorage o sin dato → system', () => {
     expect(loadTheme()).toBe(DEFAULT_THEME)
     vi.stubGlobal('localStorage', mockStorage())
-    expect(loadTheme()).toBe('light')
+    expect(loadTheme()).toBe('system')
   })
 
-  it('lee dark y light válidos', () => {
+  it('lee dark, light y system válidos', () => {
     vi.stubGlobal('localStorage', mockStorage({ [THEME_KEY]: '"dark"' }))
     expect(loadTheme()).toBe('dark')
     vi.stubGlobal('localStorage', mockStorage({ [THEME_KEY]: '"light"' }))
     expect(loadTheme()).toBe('light')
+    vi.stubGlobal('localStorage', mockStorage({ [THEME_KEY]: '"system"' }))
+    expect(loadTheme()).toBe('system')
   })
 
-  it('JSON corrupto o valor inesperado → light sin lanzar', () => {
+  it('JSON corrupto o valor inesperado → system sin lanzar', () => {
     vi.stubGlobal('localStorage', mockStorage({ [THEME_KEY]: '{no-json' }))
-    expect(loadTheme()).toBe('light')
+    expect(loadTheme()).toBe('system')
     vi.stubGlobal(
       'localStorage',
-      mockStorage({ [THEME_KEY]: JSON.stringify('system') }),
+      mockStorage({ [THEME_KEY]: JSON.stringify('sepia') }),
     )
-    expect(loadTheme()).toBe('light')
+    expect(loadTheme()).toBe('system')
   })
 })
 

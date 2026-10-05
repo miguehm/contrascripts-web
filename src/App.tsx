@@ -38,10 +38,9 @@ import { useEditorPosition } from '@/hooks/useEditorPosition'
 import { useParser } from '@/hooks/useParser'
 import { usePreviewOpen } from '@/hooks/usePreviewOpen'
 import { usePreviewScroll } from '@/hooks/usePreviewScroll'
-import { usePreviewZoom } from '@/hooks/usePreviewZoom'
 import { useScripts } from '@/hooks/useScripts'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
-import { useWarningsOpen } from '@/hooks/useWarningsOpen'
+import { usePreferences } from '@/store/preferences'
 import { sanitizeFilename } from '@/lib/scripts'
 
 type Tab = 'editor' | 'preview'
@@ -113,13 +112,15 @@ export default function App() {
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
-  // REVIEW.md 3: el zoom vive aquí (no en `PdfPreview`) para que el cambio
-  // de tab móvil —que desmonta el preview— no lo reinicie; persiste vía store.
-  // REVIEW.md 1 y 8: fit al ancho por defecto en móvil y desktop
-  // (fitDefault); la preferencia guardada (`fitWidth`/`zoom`) manda en
-  // siguientes boots. REVIEW.md 8: el fit queda disponible en desktop bajo
-  // demanda (el número del porcentaje entra en fit).
-  const zoom = usePreviewZoom({ fitDefault: true })
+  // REVIEW.md 3 y 9: el zoom vive en `PreferencesProvider` (no en
+  // `PdfPreview`) para que el cambio de tab móvil —que desmonta el
+  // preview— no lo reinicie; persiste vía store. El modal de Ajustes
+  // consume la misma instancia. REVIEW.md 1 y 8: fit al ancho por defecto
+  // en móvil y desktop (fitDefault); la preferencia guardada
+  // (`fitWidth`/`zoom`) manda en siguientes boots. REVIEW.md 8: el fit
+  // queda disponible en desktop bajo demanda (el número del porcentaje
+  // entra en fit).
+  const { zoom } = usePreferences()
   // Al abrir otro guion (nuevo o existente) se re-aplica la preferencia
   // guardada (fit o zoom manual); el cambio de tab editor↔preview con el
   // mismo guion conserva el zoom vigente.
@@ -143,10 +144,11 @@ export default function App() {
   // cerrar el panel, expandir o cambiar de tab.
   const previewScroll = usePreviewScroll()
   const editorPosition = useEditorPosition()
-  // REVIEW.md 4: avisos como notas al pie — tira dockada + panel flotante.
-  // `open` persiste en `guion.warnings.v1`; ante avisos nuevos solo se
+  // REVIEW.md 4 y 9: avisos como notas al pie — tira dockada + panel
+  // flotante. `open` persiste en `guion.warnings.v1` y se comparte con el
+  // modal de Ajustes vía `PreferencesProvider`; ante avisos nuevos solo se
   // ilumina el badge (sin auto-apertura: taparía manuscrito).
-  const { open: warningsOpen, setOpen: setWarningsOpen } = useWarningsOpen()
+  const { warningsOpen, setWarningsOpen } = usePreferences()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const text = activeScript?.text ?? ''

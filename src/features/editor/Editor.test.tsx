@@ -7,6 +7,7 @@ import { cleanup, render } from '@testing-library/react'
 import { EditorState } from '@codemirror/state'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { EditorView } from '@codemirror/view'
+import type { ReactNode } from 'react'
 import { Editor } from './Editor'
 import {
   JUMP_TOP_FRACTION,
@@ -14,14 +15,25 @@ import {
   jumpToOffset,
 } from './jumpToOffset'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { PreferencesProvider } from '@/store/preferences'
 
 afterEach(cleanup)
 
+// Punto 9: `Editor` consume las prefs compartidas (tamaño/interlineado),
+// así que los renders de test las proveen igual que `main.tsx`.
+function Providers({ children }: { children: ReactNode }) {
+  return (
+    <ThemeProvider>
+      <PreferencesProvider>{children}</PreferencesProvider>
+    </ThemeProvider>
+  )
+}
+
 function renderEditor(value = 'INT. CASA - DÍA') {
   return render(
-    <ThemeProvider>
+    <Providers>
       <Editor value={value} onChange={vi.fn()} />
-    </ThemeProvider>,
+    </Providers>,
   )
 }
 
@@ -42,9 +54,9 @@ describe('Editor', () => {
 
   it('deshabilitado no es editable', () => {
     const { container } = render(
-      <ThemeProvider>
+      <Providers>
         <Editor value="x" onChange={vi.fn()} disabled />
-      </ThemeProvider>,
+      </Providers>,
     )
     expect(container.querySelector('[contenteditable="false"]')).toBeTruthy()
   })
@@ -56,13 +68,13 @@ describe('Editor', () => {
 
   it('headerAction se monta a la derecha de la capitular', () => {
     const { getByRole } = render(
-      <ThemeProvider>
+      <Providers>
         <Editor
           value="x"
           onChange={vi.fn()}
           headerAction={<button type="button">Acción</button>}
         />
-      </ThemeProvider>,
+      </Providers>,
     )
     expect(getByRole('button', { name: 'Acción' })).toBeDefined()
   })
@@ -70,9 +82,9 @@ describe('Editor', () => {
   it('publica el EditorView y lo suelta al desmontar (punto 4)', () => {
     const onViewReady = vi.fn()
     const { unmount } = render(
-      <ThemeProvider>
+      <Providers>
         <Editor value="x" onChange={vi.fn()} onViewReady={onViewReady} />
-      </ThemeProvider>,
+      </Providers>,
     )
     // Al montar publica la vista con su contenedor (lo que mide el padre para
     // saber cuál de los editores está visible).
@@ -91,22 +103,22 @@ describe('Editor', () => {
     // efecto de limpieza, cada render publicaría `null` y la vista se perdería.
     const seen: unknown[] = []
     const { rerender } = render(
-      <ThemeProvider>
+      <Providers>
         <Editor
           value="x"
           onChange={vi.fn()}
           onViewReady={(v) => seen.push(v)}
         />
-      </ThemeProvider>,
+      </Providers>,
     )
     rerender(
-      <ThemeProvider>
+      <Providers>
         <Editor
           value="y"
           onChange={vi.fn()}
           onViewReady={(v) => seen.push(v)}
         />
-      </ThemeProvider>,
+      </Providers>,
     )
     expect(seen[0]).not.toBeNull()
     expect(seen[seen.length - 1]).not.toBeNull()

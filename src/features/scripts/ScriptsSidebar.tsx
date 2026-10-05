@@ -37,7 +37,7 @@ import { Separator } from '@/components/ui/separator'
 import { useScripts } from '@/hooks/useScripts'
 import { filterScriptsByTitle } from '@/lib/scripts'
 import type { Script } from '@/types/Script'
-import { AboutDialog } from './AboutDialog'
+import { SettingsDialog } from '../settings/SettingsDialog'
 import { ImportButton } from './ImportButton'
 import { exportScript } from './scriptFiles'
 
@@ -129,7 +129,7 @@ export function ScriptsSidebar({
           <Plus aria-hidden="true" />
         </Button>
         <ImportButton variant="ghost" size="icon-sm" />
-        <AboutDialog variant="ghost" size="icon-sm" className="mt-auto" />
+        <SettingsDialog variant="ghost" size="icon-sm" className="mt-auto" />
       </section>
     )
   }
@@ -282,7 +282,7 @@ export function ScriptsSidebar({
       )}
 
       <Separator />
-      <AboutDialog variant="outline" size="sm" className="w-full" />
+      <SettingsDialog variant="outline" size="sm" className="w-full" />
 
       {/* Renombrar */}
       <Dialog

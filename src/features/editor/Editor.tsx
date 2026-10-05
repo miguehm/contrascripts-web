@@ -26,9 +26,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react'
 import type { EditorPositionStore } from '@/hooks/useEditorPosition'
+import { usePreferences } from '@/store/preferences'
 import { fountain } from './fountain'
 import { fountainTheme } from './fountainTheme'
 import { jumpLineHighlightField } from './jumpHighlight'
@@ -264,6 +266,16 @@ export function Editor({
     [watchScroller, doRestore],
   )
 
+  // Punto 9 (Ajustes → Editor): tamaño de fuente e interlineado desde
+  // las prefs compartidas. Se escriben como CSS vars en la envoltura y
+  // `fountainTheme` las lee en `.cm-content`: sin reconfigurar la vista de
+  // CodeMirror. Las dos columnas (móvil + desktop) comparten prefs.
+  const { editor } = usePreferences()
+  const editorVars = {
+    '--editor-font-size': `${editor.fontSize}px`,
+    '--editor-line-height': String(editor.lineHeight),
+  } as CSSProperties
+
   return (
     <div className="flex h-full flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -278,6 +290,7 @@ export function Editor({
       <div
         ref={wrapRef}
         className="min-h-0 flex-1 overflow-hidden rounded-sm border border-input bg-card focus-within:border-ring"
+        style={editorVars}
         // Punto 6: un gesto del usuario corta la espera de asentamiento en
         // vuelo (su scroll/cursor mandan sobre el restore).
         onPointerDown={cancelRestore}

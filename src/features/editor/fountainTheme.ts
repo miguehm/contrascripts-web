@@ -95,7 +95,13 @@ const fountainLayout = EditorView.theme({
   },
   '.cm-content': {
     fontFamily: 'var(--font-mono)',
-    lineHeight: '1.625rem',
+    // REVIEW.md punto 9: tamaño e interlineado configurables. `Editor`
+    // escribe `--editor-font-size` (longitud) y `--editor-line-height`
+    // (multiplicador) en su envoltura; sin prefs valen lo previo
+    // (`1rem` / `1.625rem`).
+    fontSize: 'var(--editor-font-size, 1rem)',
+    lineHeight:
+      'calc(var(--editor-font-size, 1rem) * var(--editor-line-height, 1.625))',
     caretColor: '#d97706',
     padding: '1rem',
   },

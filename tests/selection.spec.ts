@@ -36,6 +36,9 @@ test('selección en dark usa el ámbar claro, no el lila de CM', async ({
   await expect(page.locator('.cm-content:visible')).toBeVisible({
     timeout: 30_000,
   })
+  // El default es Sistema (en el runner resuelve claro): el interruptor
+  // cicla sistema → claro → oscuro.
+  await page.getByRole('button', { name: 'Cambiar a tema claro' }).click()
   await page.getByRole('button', { name: 'Cambiar a tema oscuro' }).click()
   await expect(page.locator('html.dark')).toBeAttached()
   await selectAll(page)
