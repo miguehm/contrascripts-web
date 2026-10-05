@@ -99,6 +99,11 @@
   --paper: #ffffff;
   --paper-ink: #0f172a;
   --syntax: #904d00;
+  /* REVIEW.md punto 5: selección del editor (ámbar tungsteno). En light el
+     ámbar quemado al 30% contrasta sobre desk claro; el valor dark vive en
+     `.dark` (ámbar claro más opaco sobre obsidiana). Lo consume
+     `fountainTheme.ts` vía `var(--selection)` para conmutar sin recrear CM. */
+  --selection: rgba(217, 119, 6, 0.3);
 }
 
 /* §8 dark = Cinematic Script Minimal (fuente: design/design.dark.md). */
@@ -139,6 +144,10 @@
   --paper: #fbfbf9;
   --paper-ink: #121214;
   --syntax: #4f46e5;
+  /* Punto 5: ámbar claro al 45% sobre `#131317`: el quemado al 25-30% quedaba
+     lavado con texto `#e4e1e7`. Queda por debajo del flash del punto 4 (0.55)
+     para no confundirse con él. */
+  --selection: rgba(251, 146, 60, 0.45);
 }
 
 @layer base {

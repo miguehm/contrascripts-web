@@ -115,7 +115,7 @@ const fountainLayout = EditorView.theme({
   },
   // Punto 4: flash efímero de la línea destino tras saltar desde el PDF.
   // Ámbar de marca (caret, selección, anillo de foco), un punto más fuerte
-  // que la selección (`rgba(217,119,6,0.25)`) para destacar sobre ella; no
+  // que la selección (`var(--selection)`: 0.30 en light, 0.45 en dark) para destacar sobre ella; no
   // amarillo marcador, ni gris `--accent` (indistinguible del
   // `.cm-activeLine`), ni índigo `--syntax` (reservado a tokens Fountain).
   // OJO: rgba directo, no `color-mix(... transparent)`: mezclar contra negro
@@ -139,9 +139,24 @@ const fountainLayout = EditorView.theme({
   '.cm-cursor': {
     borderLeftColor: '#d97706',
   },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(217,119,6,0.25)',
-  },
+  // OJO especificidad: el `baseTheme` de `drawSelection` en
+  // `@codemirror/view` pinta `.cm-selectionBackground` con
+  // `&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`
+  // (5 clases, `#d7d4f0` en light). Un selector corto (`&.cm-focused
+  // .cm-selectionBackground`, 3 clases) pierde siempre y el lila manda — fue
+  // la causa del punto 5. Hay que espejar la ruta completa para igualar (5
+  // clases) y ganar por orden de montaje (`theme` lleva precedencia por
+  // defecto y `baseTheme` va en `Prec.lowest`). La segunda rama cubre el
+  // editor sin foco pasando por `.cm-selectionLayer` (3 clases) para batir
+  // también al default unfocused `&light .cm-selectionBackground`.
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground':
+    {
+      // REVIEW.md punto 5: token por tema (`--selection` en `index.css`).
+      // El ámbar quemado fijo al 25% quedaba lavado en dark sobre `#131317`
+      // con texto `#e4e1e7`; ahora light usa quemado al 30% y dark ámbar claro
+      // al 45%, por debajo del flash del punto 4 (0.55) para no confundirse.
+      backgroundColor: 'var(--selection)',
+    },
   '.cm-placeholder': {
     fontFamily: 'var(--font-mono)',
     color: 'var(--muted-foreground)',
