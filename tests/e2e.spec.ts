@@ -256,6 +256,100 @@ test('vista en grande: amplía a todo el ancho, persiste y sale', async ({
   })
 })
 
+// REVIEW.md 10: el doble clic en la vista en grande sale del modo grande y
+// lleva el cursor al texto clicado en el editor (la misma lógica del punto 4,
+// incluido el desplazamiento del editor hacia la línea destino).
+test('doble clic en la vista en grande sale y lleva al editor', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  // Guion largo: el objetivo queda lejos del inicio y el salto debe scrollear
+  // el editor (clicar la primera línea pasaría sin desplazar).
+  const filler = 'Línea de relleno para llenar página.'
+  await writeScript(page, 'INT. CASA - DÍA\n\n' + `${filler}\n\n`.repeat(120))
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  // Entrar en grande: el editor se desmonta y el salto queda pendiente.
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'Salir de vista ampliada' }),
+  ).toBeVisible()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  // La vista en grande remonta el preview: esperar la segunda hoja y centrar
+  // su primera línea en el contenedor antes de clicar. El scroll y la medida
+  // van en una sola operación síncrona: con hojas más altas que el contenedor,
+  // `scrollIntoViewIfNeeded` + `boundingBox` en pasos separados deja el punto
+  // fuera del viewport (el clic caería al aire).
+  await expect(page.getByRole('img', { name: /Página 2 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  const vh = await page.evaluate(() => window.innerHeight)
+  const pt = await page.getByTestId('preview-pages').evaluate((el) => {
+    const target = el.querySelector('[data-page="2"]') as HTMLElement | null
+    if (!target) return null
+    const sr = el.getBoundingClientRect()
+    const pr = target.getBoundingClientRect()
+    // Punto de clic: margen 1.5" / algo más de 1" desde arriba, como en
+    // `findFirstLinePoint`, centrado verticalmente en el contenedor.
+    el.scrollTop =
+      pr.top - sr.top + el.scrollTop + pr.height * 0.096 - el.clientHeight / 2
+    const after = target.getBoundingClientRect()
+    return {
+      x: after.left + after.width * 0.18,
+      y: after.top + after.height * 0.096,
+    }
+  })
+  expect(pt).not.toBeNull()
+  // Sanity: el punto debe estar en pantalla antes de clicar.
+  expect(pt!.y).toBeGreaterThan(0)
+  expect(pt!.y).toBeLessThan(vh)
+  expect(pt!.x).toBeGreaterThan(0)
+  await page.mouse.dblclick(pt!.x, pt!.y)
+
+  // Sale del modo grande y el cursor cae en la línea clicada, con flash.
+  await expect(
+    page.getByRole('button', { name: 'Ver vista previa en grande' }),
+  ).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+  await expect.poll(() => readCaretLine(page), { timeout: 10_000 }).toBe(filler)
+  await expect(page.locator('.cm-jump-flash:visible')).toBeVisible({
+    timeout: 5_000,
+  })
+  // Y el editor se desplaza: la línea activa queda dentro de su viewport
+  // (el bug era que el cursor llegaba pero el editor se quedaba arriba).
+  const editorScroller = page.locator('.cm-scroller:visible')
+  await expect
+    .poll(() => editorScroller.evaluate((el) => el.scrollTop), {
+      timeout: 10_000,
+    })
+    .toBeGreaterThan(0)
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const scroller = Array.from(
+            document.querySelectorAll('.cm-scroller'),
+          ).find((el) => el.getBoundingClientRect().width > 0)
+          const active = Array.from(
+            document.querySelectorAll('.cm-activeLine'),
+          ).find((el) => el.getBoundingClientRect().width > 0)
+          if (!scroller || !active) return false
+          const sr = scroller.getBoundingClientRect()
+          const ar = active.getBoundingClientRect()
+          return ar.top >= sr.top - 1 && ar.bottom <= sr.bottom + 1
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+})
+
 test('doble clic en el documento lleva el cursor a esa línea', async ({
   page,
 }) => {
