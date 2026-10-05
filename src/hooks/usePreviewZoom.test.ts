@@ -2,6 +2,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { UI_KEY } from '@/store/uiStorage'
 import {
   PINCH_GAIN,
   ZOOM_MAX,
@@ -82,11 +83,12 @@ describe('usePreviewZoom', () => {
     expect(result.current.scale).toBe(1)
   })
 
-  it('el zoom vive solo en sesión (sin persistencia entre montajes)', () => {
+  it('el zoom manual persiste entre montajes', () => {
     const { result } = renderHook(() => usePreviewZoom())
     act(() => result.current.setScale(2))
     const { result: second } = renderHook(() => usePreviewZoom())
-    expect(second.current.scale).toBe(1)
+    expect(second.current.scale).toBe(2)
+    expect(second.current.fitMode).toBe(false)
   })
 
   it('respeta los topes', () => {
@@ -107,8 +109,9 @@ describe('computeFitScale', () => {
     expect(computeFitScale(768, 612, 48)).toBeCloseTo(720 / 612)
   })
 
-  it('no sube de FIT_MAX y no baja de FIT_MIN', () => {
-    expect(computeFitScale(1000, 612, 32)).toBeLessThanOrEqual(1.5)
+  it('no sube de FIT_MAX (= tope manual) y no baja de FIT_MIN', () => {
+    expect(computeFitScale(1000, 612, 32)).toBeCloseTo(968 / 612)
+    expect(computeFitScale(1000, 612, 32)).toBeLessThanOrEqual(ZOOM_MAX)
     expect(computeFitScale(200, 612, 32)).toBeGreaterThanOrEqual(0.3)
   })
 
@@ -120,7 +123,7 @@ describe('computeFitScale', () => {
 })
 
 describe('usePreviewZoom · fit (punto 1)', () => {
-  it('sin preferencia guardada usa fitDefault; desktop → manual', () => {
+  it('sin preferencia guardada usa fitDefault como modo inicial', () => {
     const { result } = renderHook(() => usePreviewZoom({ fitDefault: false }))
     expect(result.current.fitMode).toBe(false)
     const { result: mobile } = renderHook(() =>
@@ -129,17 +132,38 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     expect(mobile.current.fitMode).toBe(true)
   })
 
-  it('un zoom manual sale de fit; no persiste fitWidth', () => {
+  it('la preferencia manual guardada manda sobre fitDefault', () => {
+    globalThis.localStorage?.setItem(
+      UI_KEY,
+      JSON.stringify({ collapsed: false, zoom: 1.5, fitWidth: false }),
+    )
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
+    expect(result.current.fitMode).toBe(false)
+    expect(result.current.scale).toBe(1.5)
+  })
+
+  it('el fit guardado se respeta en el arranque', () => {
+    globalThis.localStorage?.setItem(
+      UI_KEY,
+      JSON.stringify({ collapsed: false, fitWidth: true }),
+    )
+    const { result } = renderHook(() => usePreviewZoom({ fitDefault: false }))
+    expect(result.current.fitMode).toBe(true)
+  })
+
+  it('un zoom manual sale de fit y persiste la preferencia', () => {
     const { result } = renderHook(() => usePreviewZoom({ fitDefault: true }))
     act(() => result.current.setFitScale(0.53))
     expect(result.current.effectiveScale).toBeCloseTo(0.53)
     act(() => result.current.zoomIn())
     expect(result.current.fitMode).toBe(false)
     expect(result.current.effectiveScale).toBe(result.current.scale)
+    const manual = result.current.scale
     const { result: second } = renderHook(() =>
       usePreviewZoom({ fitDefault: true }),
     )
-    expect(second.current.fitMode).toBe(true)
+    expect(second.current.fitMode).toBe(false)
+    expect(second.current.scale).toBe(manual)
   })
 
   it('un gesto (setScaleLive) sale de fit', () => {
@@ -148,7 +172,7 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     expect(result.current.fitMode).toBe(false)
   })
 
-  it('setFitMode reactiva fit solo en esta sesión', () => {
+  it('setFitMode(true) reactiva fit y persiste la preferencia', () => {
     const { result } = renderHook(() => usePreviewZoom({ fitDefault: false }))
     act(() => result.current.setScale(2))
     act(() => result.current.setFitMode(true))
@@ -156,7 +180,7 @@ describe('usePreviewZoom · fit (punto 1)', () => {
     const { result: second } = renderHook(() =>
       usePreviewZoom({ fitDefault: false }),
     )
-    expect(second.current.fitMode).toBe(false)
+    expect(second.current.fitMode).toBe(true)
   })
 
   it('resetForScript reactiva el fit y restablece el zoom al 100%', () => {

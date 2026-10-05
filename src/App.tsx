@@ -115,12 +115,14 @@ export default function App() {
   }, [])
   // REVIEW.md 3: el zoom vive aquí (no en `PdfPreview`) para que el cambio
   // de tab móvil —que desmonta el preview— no lo reinicie; persiste vía store.
-  // REVIEW.md 1: fit al ancho por defecto solo en móvil (fitDefault); en
-  // desktop siempre entra manual.
-  const zoom = usePreviewZoom({ fitDefault: !isDesktop })
-  // Al abrir otro guion (nuevo o existente) el fit inicial vuelve a
-  // aplicarse; el cambio de tab editor↔preview con el mismo guion conserva
-  // el zoom vigente.
+  // REVIEW.md 1 y 8: fit al ancho por defecto en móvil y desktop
+  // (fitDefault); la preferencia guardada (`fitWidth`/`zoom`) manda en
+  // siguientes boots. REVIEW.md 8: el fit queda disponible en desktop bajo
+  // demanda (el número del porcentaje entra en fit).
+  const zoom = usePreviewZoom({ fitDefault: true })
+  // Al abrir otro guion (nuevo o existente) se re-aplica la preferencia
+  // guardada (fit o zoom manual); el cambio de tab editor↔preview con el
+  // mismo guion conserva el zoom vigente.
   const activeScriptId = activeScript?.id ?? null
   const lastScriptIdRef = useRef<string | null>(activeScriptId)
   useEffect(() => {
@@ -400,7 +402,9 @@ export default function App() {
                   zoom={zoom}
                   expanded={previewExpanded}
                   onToggleExpand={toggleExpanded}
-                  fitEnabled={!isDesktop}
+                  // REVIEW.md 8: el ajuste al ancho está disponible también en
+                  // desktop (el número del porcentaje entra en fit).
+                  fitEnabled
                   doc={doc}
                   source={text}
                   onJumpToSource={handleJumpToSource}
@@ -435,6 +439,8 @@ export default function App() {
                       zoom={zoom}
                       expanded={previewExpanded}
                       onToggleExpand={toggleExpanded}
+                      // REVIEW.md 8: también aquí (vista en grande).
+                      fitEnabled
                       doc={doc}
                       source={text}
                       onJumpToSource={handleJumpToSource}

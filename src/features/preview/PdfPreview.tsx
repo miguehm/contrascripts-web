@@ -21,12 +21,14 @@
 // - Gestos: pinch de 2 dedos amplificado (×2.0), `Ctrl/Cmd+rueda` (pellizco
 //   del trackpad) y doble-tap-arrastrar vertical con un dedo (estilo Maps).
 //
-// Fit al ancho (REVIEW.md punto 1, solo móvil):
+// Fit al ancho (REVIEW.md puntos 1 y 8, móvil y desktop):
 // - `PdfPreview` no decide el modo: lo trae `zoom.fitMode` (vive en `App`
 //   para sobrevivir al cambio de tab y persiste en `store/uiStorage.ts`).
-// - Cuando `fitEnabled`, un `ResizeObserver` sobre el contenedor mide el
-//   ancho útil y publica `zoom.setFitScale()` (no persiste: depende del
-//   viewport). La escala mostrada es `zoom.effectiveScale`.
+//   El modo inicial es fit, salvo zoom manual guardado de otra sesión.
+// - Cuando `fitEnabled` (todas las ramas de `App`: móvil y desktop), un
+//   `ResizeObserver` sobre el contenedor mide el ancho útil y publica
+//   `zoom.setFitScale()` (no persiste: depende del viewport). La escala
+//   mostrada es `zoom.effectiveScale`.
 // - Volver al ajuste al ancho es tocar el número del porcentaje (el doble-clic
 //   ya no lo hace, ahora lleva al editor).
 //
@@ -77,8 +79,9 @@ interface PdfPreviewProps {
   /** Vista en grande (REVIEW.md punto 2): el panel abarca todo el ancho. */
   expanded?: boolean
   onToggleExpand?: () => void
-  /** Fit al ancho (punto 1): solo la rama móvil de `App` lo activa.
-   * En desktop se omite (falso) y el zoom manual queda intacto. */
+  /** Fit al ancho (puntos 1 y 8): todas las ramas de `App` lo activan.
+   * El modo inicial es fit (salvo preferencia manual guardada); tras un
+   * zoom manual, el número del porcentaje vuelve a entrar en fit. */
   fitEnabled?: boolean
   /** Documento parseado y su texto, para resolver el offset del punto 4. */
   doc?: Document | null
@@ -251,7 +254,7 @@ export function PdfPreview({
     zoomRef.current = zoom
   })
 
-  // Punto 1 (solo móvil): mide el ancho útil del contenedor y publica la
+  // Puntos 1 y 8: mide el ancho útil del contenedor y publica la
   // escala de fit. `useLayoutEffect` a propósito: la primera medida debe
   // estar lista pre-paint, o el usuario ve un frame a 100% antes de que
   // la hoja salte al ancho. Ante navegadores sin `ResizeObserver` (tests
@@ -701,9 +704,9 @@ export function PdfPreview({
           >
             −
           </Button>
-          {/* Punto 1 (móvil): el número es el indicador y, a la vez, el gesto
+          {/* Puntos 1 y 8: el número es el indicador y, a la vez, el gesto
               de vuelta al ajuste al ancho —el doble-clic ya lleva al
-              editor—. En desktop sigue reseteando al 100 %. */}
+              editor—. */}
           <Button
             size="xs"
             variant="ghost"

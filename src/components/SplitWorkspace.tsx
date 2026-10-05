@@ -141,6 +141,9 @@ export function SplitWorkspace({
             zoom={zoom}
             expanded={previewExpanded}
             onToggleExpand={onToggleExpand}
+            // REVIEW.md 8: el ajuste al ancho también en desktop (el número
+            // del porcentaje entra en fit en vez de resetear al 100 %).
+            fitEnabled
             doc={doc}
             source={text}
             onJumpToSource={onJumpToSource}

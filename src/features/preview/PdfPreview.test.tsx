@@ -188,6 +188,34 @@ async function flush() {
   })
 }
 
+/** Falsifica `ResizeObserver` + `clientWidth` para que `measure()` vea un
+ * contenedor de `width` px. Devuelve la restauración (llamar en `finally`).
+ * jsdom no trae hojas de estilo: el padding computa como 0. */
+function stubFitMeasure(width: number): () => void {
+  const desc = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'clientWidth',
+  )
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    get: () => width,
+  })
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private cb: ResizeObserverCallback) {}
+      observe() {
+        this.cb([], this as unknown as ResizeObserver)
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver,
+  )
+  return () => {
+    if (desc) Object.defineProperty(HTMLElement.prototype, 'clientWidth', desc)
+  }
+}
+
 describe('PdfPreview', () => {
   it('renderiza un canvas por página del PDF', async () => {
     const pdf = makePdf(2)
@@ -538,7 +566,7 @@ describe('vista en grande (REVIEW.md punto 2)', () => {
   })
 })
 
-describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
+describe('fit al ancho (REVIEW.md puntos 1 y 8)', () => {
   it('no hay botón "Ajustar" y hacer zoom sale de fit', async () => {
     const pdf = makePdf(1)
     render(
@@ -600,16 +628,103 @@ describe('fit al ancho (REVIEW.md punto 1, móvil)', () => {
     await flush()
   })
 
-  it('desktop: el porcentaje resetea a 100% y el doble-clic no lo toca', async () => {
+  it('desktop (punto 8): el porcentaje entra en fit, no resetea a 100%', async () => {
     const pdf = makePdf(1)
-    render(<Harness preview={makePreview({ pdf, numPages: 1 })} />)
+    render(<Harness preview={makePreview({ pdf, numPages: 1 })} fitEnabled />)
     await screen.findByLabelText('Página 1 de 1')
     fireEvent.click(screen.getByLabelText('Ampliar zoom'))
     fireEvent.click(screen.getByText('125 %'))
-    expect(screen.getByText('100 %')).toBeDefined()
+    // jsdom no tiene ResizeObserver: no hay escala medida y el número no
+    // cambia, pero el modo fit queda activo (sin resetear al 100 %).
+    expect(screen.queryByText('100 %')).toBeNull()
+    expect(screen.getByText('125 %').getAttribute('aria-label')).toContain(
+      'ajustado al ancho',
+    )
     fireEvent.doubleClick(screen.getByTestId('preview-pages'))
-    expect(screen.getByText('100 %')).toBeDefined()
+    expect(screen.getByText('125 %')).toBeDefined()
     await flush()
+  })
+
+  it('desktop (punto 8): con medida del contenedor muestra el fit real', async () => {
+    // Contenedor de 800 px; sin hojas de estilo el padding computa como 0,
+    // así que fit = 800 / 612 ≈ 1.307 → 131 %.
+    // El Harness arranca en manual para ejercitar el click (App pasa
+    // `fitDefault: true`, ver el test de primer render).
+    const restore = stubFitMeasure(800)
+    try {
+      const pdf = makePdf(1)
+      render(<Harness preview={makePreview({ pdf, numPages: 1 })} fitEnabled />)
+      await screen.findByLabelText('Página 1 de 1')
+      expect(screen.getByText('100 %')).toBeDefined()
+      fireEvent.click(screen.getByText('100 %'))
+      // 800 / 612 ≈ 1.307 → 131 % ajustado al ancho.
+      expect(screen.getByText('131 %').getAttribute('aria-label')).toContain(
+        'ajustado al ancho',
+      )
+      await flush()
+    } finally {
+      restore()
+    }
+  })
+
+  it('desktop (punto 8): con fitDefault el primer render ya ajusta', async () => {
+    // Como App (fitDefault: true): sin click previo, el primer frame ya
+    // muestra la escala medida (131 % con 800 px).
+    const restore = stubFitMeasure(800)
+    try {
+      const pdf = makePdf(1)
+      render(
+        <Harness
+          preview={makePreview({ pdf, numPages: 1 })}
+          fitEnabled
+          fitDefault
+        />,
+      )
+      await screen.findByLabelText('Página 1 de 1')
+      expect(screen.getByText('131 %')).toBeDefined()
+      expect(screen.getByText('131 %').getAttribute('aria-label')).toContain(
+        'ajustado al ancho',
+      )
+      await flush()
+    } finally {
+      restore()
+    }
+  })
+
+  it('desktop (punto 8): el zoom manual sobrevive al remontaje', async () => {
+    const restore = stubFitMeasure(800)
+    try {
+      const pdf = makePdf(1)
+      const first = render(
+        <Harness
+          preview={makePreview({ pdf, numPages: 1 })}
+          fitEnabled
+          fitDefault
+        />,
+      )
+      await screen.findByLabelText('Página 1 de 1')
+      expect(screen.getByText('131 %')).toBeDefined()
+      // Salir de fit con `+`: vecino del fit 1.307 → 1.5.
+      fireEvent.click(screen.getByLabelText('Ampliar zoom'))
+      expect(screen.getByText('150 %')).toBeDefined()
+      first.unmount()
+      render(
+        <Harness
+          preview={makePreview({ pdf, numPages: 1 })}
+          fitEnabled
+          fitDefault
+        />,
+      )
+      await screen.findByLabelText('Página 1 de 1')
+      // La preferencia manual (150 %, sin fit) manda en el arranque.
+      expect(screen.getByText('150 %')).toBeDefined()
+      expect(
+        screen.getByText('150 %').getAttribute('aria-label'),
+      ).not.toContain('ajustado al ancho')
+      await flush()
+    } finally {
+      restore()
+    }
   })
 })
 

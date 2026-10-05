@@ -368,14 +368,30 @@ test('el doble clic ya no alterna el zoom', async ({ page }) => {
   })
   const zoom = page.getByRole('button', { name: /Zoom \d+ por ciento/ })
   await expect(zoom).toBeVisible()
-  // Amplía con el botón `+` de la cabecera del preview.
+  const before = await zoom.getAttribute('aria-label')
+  // Sale del fit inicial con el botón `+` de la cabecera del preview.
   await page.getByRole('button', { name: 'Ampliar zoom' }).click()
-  await expect(zoom).toContainText('125 %')
   const afterZoom = await zoom.getAttribute('aria-label')
+  expect(afterZoom).not.toBe(before)
   // El doble clic ya no alterna el zoom: lleva al editor (punto 4).
   await page.mouse.dblclick(400, 400)
   await page.waitForTimeout(300)
   expect(await zoom.getAttribute('aria-label')).toBe(afterZoom)
+})
+
+// REVIEW.md 8: en primera carga el preview ajusta al ancho disponible,
+// sin necesidad de tocar el porcentaje.
+test('en primera carga el preview ajusta al ancho', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByRole('img', { name: /Página 1 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+  const zoom = page.getByRole('button', { name: /Zoom \d+ por ciento/ })
+  await expect(zoom).toBeVisible()
+  await expect(zoom).toHaveAttribute('aria-label', /ajustado al ancho/)
 })
 
 // REVIEW.md 7: clic en un aviso lleva el cursor a su línea con el flash del
