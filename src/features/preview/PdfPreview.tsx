@@ -51,6 +51,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Loader2, Maximize2, Minimize2 } from 'lucide-react'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
+import type { PreviewScrollStore } from '@/hooks/usePreviewScroll'
 import {
   FIT_MIN,
   PAGE_WIDTH_PT,
@@ -84,6 +85,13 @@ interface PdfPreviewProps {
   source?: string
   /** Doble clic en un texto: lleva al editor con el cursor ahí. */
   onJumpToSource?: (offset: number) => void
+  /**
+   * Clave del documento visible (id del guion) + almacén de scroll
+   * (REVIEW.md 6): al desmontar se guarda la posición y al remontar (o al
+   * cambiar de guion) se restituye. Sin ambos, el panel reabre arriba.
+   */
+  scrollKey?: string | null
+  scrollStore?: PreviewScrollStore | null
 }
 
 interface PinchState {
@@ -167,6 +175,8 @@ export function PdfPreview({
   doc = null,
   source = '',
   onJumpToSource,
+  scrollKey = null,
+  scrollStore = null,
 }: PdfPreviewProps) {
   const { status, pdf, numPages, error, renderNow } = preview
   const {
@@ -271,6 +281,109 @@ export function PdfPreview({
       ro.disconnect()
     }
   }, [fitEnabled, setFitScale])
+
+  // Punto 6: la posición vive fuera del DOM (el panel se desmonta al
+  // cerrar / expandir). Espejos para que el cleanup lea lo último aunque
+  // las props cambien sin remontar.
+  const scrollKeyRef = useRef(scrollKey)
+  const scrollStoreRef = useRef(scrollStore)
+  useEffect(() => {
+    scrollKeyRef.current = scrollKey
+    scrollStoreRef.current = scrollStore
+  })
+  // Guardar al desmontar: cubre cerrar el panel, la vista en grande y el
+  // cambio de tab móvil (todos desmontan este componente).
+  useEffect(
+    () => () => {
+      scrollStoreRef.current?.save(scrollKeyRef.current, scrollRef.current)
+    },
+    [],
+  )
+  // Punto 6 (bucle de eco): el restore parcial —contenido aún creciendo—
+  // mueve `scrollTop` y ese scroll programático dispararía `onScroll`,
+  // pisando la posición buena con el valor intermedio. Mientras hay un
+  // restore en vuelo no se guarda; cualquier gesto del usuario lo cancela
+  // (su scroll sí vale) y reanuda el guardado normal.
+  const restoringRef = useRef(false)
+  const cancelRestore = useCallback(() => {
+    restoringRef.current = false
+  }, [])
+  /**
+   * Tops de cada página en px desde el inicio del contenido. Vía rects
+   * (robusto al chain de offsetParents y al padding del contenedor). Durante
+   * los gestos de zoom el wrapper lleva transform y los rects son
+   * visuales: no se mide en vuelo (ver `gesture`).
+   */
+  const measurePageTops = useCallback((): number[] => {
+    const scroller = scrollRef.current
+    const wrap = docWrapRef.current
+    if (!scroller || !wrap) return []
+    const crect = scroller.getBoundingClientRect()
+    const base = scroller.scrollTop
+    const tops: number[] = []
+    wrap.querySelectorAll('[data-page]').forEach((node) => {
+      const r = (node as HTMLElement).getBoundingClientRect()
+      tops.push(r.top - crect.top + base)
+    })
+    return tops
+  }, [])
+  // Caché de tops: re-medir en cada tick de scroll forzaría layout; la suma
+  // de alturas solo cambia si alguna página cambió, y eso mueve
+  // `scrollHeight`, que sí es barato de leer.
+  const topsCacheRef = useRef<{ height: number; tops: number[] }>({
+    height: -1,
+    tops: [],
+  })
+  const topsFor = useCallback(
+    (el: HTMLElement): number[] => {
+      const cached = topsCacheRef.current
+      // En pleno gesto el wrapper lleva `transform: scale()` y los rects
+      // son visuales, no de layout: no se mide (mejor ancla previa que
+      // ancla distorsionada).
+      if (gestureRef.current) return cached.tops
+      if (el.scrollHeight !== cached.height) {
+        cached.height = el.scrollHeight
+        cached.tops = measurePageTops()
+      }
+      return cached.tops
+    },
+    [measurePageTops],
+  )
+  /** Guarda la posición actual (scroll en curso). Barato: un Map.set. */
+  const saveScrollNow = useCallback(() => {
+    if (restoringRef.current) return
+    const el = scrollRef.current
+    if (!el) return
+    scrollStoreRef.current?.save(scrollKeyRef.current, el, topsFor(el))
+  }, [topsFor])
+  // Medida ansiosa durante el restore: todas las páginas reservan su
+  // tamaño real (sin rasterizar) para que el ancla resuelva exacto aunque
+  // el destino esté muchas páginas abajo, donde el lazy nunca habría
+  // medido. Al asentar se apaga (el raster siguió siendo perezoso).
+  const [sizingAll, setSizingAll] = useState(false)
+  // Restituir al montar, al regenerarse el PDF y al cambiar de guion. Sin
+  // dato previo lleva arriba (guion nuevo). El bucle converge re-resolviendo
+  // el ancla contra los tops vigentes hasta que el layout asienta
+  // (placeholder → altura real por página, en momentos distintos).
+  useLayoutEffect(() => {
+    if (!pdf || !scrollKey || !scrollStore) return
+    const el = scrollRef.current
+    if (!el) return
+    restoringRef.current = true
+    setSizingAll(true)
+    // La caché de tops puede traer medidas del documento anterior tras una
+    // regeneración: se invalida para que el restore mida de cero.
+    topsCacheRef.current = { height: -1, tops: [] }
+    scrollStore.restoreWithRetry(scrollKey, el, {
+      getPageTops: () => topsFor(el),
+      isCancelled: () => !restoringRef.current,
+      onSettled: () => {
+        restoringRef.current = false
+        setSizingAll(false)
+      },
+    })
+    return cancelRestore
+  }, [pdf, numPages, scrollKey, scrollStore, cancelRestore, topsFor])
 
   /** Captura el origen del gesto: rects + scroll + punto bajo los dedos.
    * Válido porque al empezar no hay transform activo (layout = base).
@@ -713,7 +826,16 @@ export function PdfPreview({
           // `onPointerDown` (sin esperar al re-render, o el navegador inicia
           // su gesto nativo y nos aborta con `pointercancel`).
           style={{ touchAction: 'pan-x pan-y' }}
+          // Punto 6: cada scroll actualiza la posición guardada para ese
+          // guion, así reabrir restituye donde se dejó. Un gesto del usuario
+          // cancela antes cualquier restore en vuelo (ver `restoringRef`).
+          onScroll={saveScrollNow}
+          onWheel={cancelRestore}
+          onKeyDown={cancelRestore}
           onPointerDown={(e) => {
+            // Punto 6: el agarre cancela cualquier restore en vuelo (el
+            // scroll que sigue es del usuario y sí debe guardarse).
+            cancelRestore()
             if (e.pointerType === 'mouse' && e.button !== 0) return
             pointersRef.current.set(e.pointerId, {
               x: e.clientX,
@@ -843,6 +965,7 @@ export function PdfPreview({
                   numPages={numPages}
                   scale={scale}
                   onTextContent={handleTextContent}
+                  eagerSize={sizingAll}
                 />
               ))}
             </div>

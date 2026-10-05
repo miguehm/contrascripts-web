@@ -378,6 +378,381 @@ test('el doble clic ya no alterna el zoom', async ({ page }) => {
   expect(await zoom.getAttribute('aria-label')).toBe(afterZoom)
 })
 
+// REVIEW.md 6: cerrar y abrir el panel del preview conserva el scroll
+// exacto (mismo doc y zoom). Doc largo a propósito: muchas páginas miden su
+// tamaño async y el restore debe converger, no asentarse a medias.
+test('cerrar y abrir el preview conserva el scroll exacto', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.getByRole('img', { name: /Página 2 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+
+  // Hay dos contenedores montados (móvil oculto + desktop): medir el visible.
+  const scroller = page.locator('[data-testid="preview-pages"]:visible')
+  await expect(scroller).toBeVisible()
+  // Valor no redondo a mitad del documento: varias páginas por encima
+  // cambian de placeholder a altura real al reabrir; el restore debe seguir
+  // el ancla, no un px contra alturas parciales.
+  const target = await scroller.evaluate((el) => {
+    el.scrollTop = Math.min(1234, el.scrollHeight - el.clientHeight)
+    return el.scrollTop
+  })
+  expect(target).toBeGreaterThan(500)
+
+  await page
+    .getByRole('button', { name: 'Ocultar vista previa' })
+    .first()
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'Mostrar vista previa' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Mostrar vista previa' }).click()
+  await expect(page.getByRole('img', { name: /Página 2 de/ })).toBeVisible({
+    timeout: 30_000,
+  })
+
+  // El re-render tras reabrir es async (worker + raster): se espera a que el
+  // scroll vuelva exactamente donde estaba, no solo "lejos de arriba".
+  await expect
+    .poll(() => scroller.evaluate((el) => el.scrollTop), { timeout: 20_000 })
+    .toBeGreaterThan(500)
+  const restored = await scroller.evaluate((el) => el.scrollTop)
+  expect(Math.abs(restored - target)).toBeLessThanOrEqual(2)
+})
+
+// REVIEW.md 6: entrar y salir de la vista en grande conserva cursor y
+// scroll exactos (mismo doc). El cursor se lee de `data-cursor-offset`
+// (atributo solo para tests, sin efecto visual).
+test('salir de la vista en grande conserva el editor exacto', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  // Hay dos editores montados (móvil oculto + desktop): medir el visible.
+  const editorScroller = page.locator('.cm-scroller:visible')
+  const editorWrap = page.locator('div[data-cursor-offset]:visible')
+  await page.locator('.cm-content:visible').press('ControlOrMeta+End')
+  const top = await editorScroller.evaluate((el) => el.scrollTop)
+  expect(top).toBeGreaterThan(100)
+  const cursor = await editorWrap.getAttribute('data-cursor-offset')
+  expect(cursor).toBe(String(longText.length))
+
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+
+  // Scroll exacto (±1px por redondeos de subpíxel) y mismo cursor (el
+  // navegador ya no lo arrastra).
+  await expect
+    .poll(
+      async () =>
+        Math.abs((await editorScroller.evaluate((el) => el.scrollTop)) - top) <=
+        1,
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+  expect(await editorWrap.getAttribute('data-cursor-offset')).toBe(cursor)
+})
+
+// REVIEW.md 6: aunque el cursor quede fuera del viewport guardado, al
+// volver se conserva todo exacto (sin arrastrar la vista al cursor).
+test('volver con el cursor fuera de vista conserva todo exacto', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  const editorScroller = page.locator('.cm-scroller:visible')
+  const editorWrap = page.locator('div[data-cursor-offset]:visible')
+  // Cursor al final y luego scroll arriba: el cursor queda fuera de vista.
+  await page.locator('.cm-content:visible').press('ControlOrMeta+End')
+  const cursor = await editorWrap.getAttribute('data-cursor-offset')
+  expect(cursor).toBe(String(longText.length))
+  await editorScroller.evaluate((el) => {
+    el.scrollTop = 0
+  })
+  expect(await editorScroller.evaluate((el) => el.scrollTop)).toBe(0)
+
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+
+  // Ni el scroll se mueve ni el cursor cambia: exactitud total.
+  await page.waitForTimeout(500)
+  expect(await editorScroller.evaluate((el) => el.scrollTop)).toBe(0)
+  expect(await editorWrap.getAttribute('data-cursor-offset')).toBe(cursor)
+})
+
+// REVIEW.md 6 (caso real): leer con la rueda sin mover el cursor —el cursor
+// queda arriba y el viewport abajo— y al volver de pantalla completa todo
+// sigue donde estaba, sin saltar al cursor.
+test('leer con rueda sin mover el cursor conserva todo exacto', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  const editorScroller = page.locator('.cm-scroller:visible')
+  const editorWrap = page.locator('div[data-cursor-offset]:visible')
+  // Cursor al inicio (tras escribir queda al final: se lleva arriba con
+  // el teclado, como haría el usuario tras releer desde el principio).
+  await page.locator('.cm-content:visible').press('ControlOrMeta+Home')
+  const cursor = await editorWrap.getAttribute('data-cursor-offset')
+  // Rueda real sobre el editor (scroll nativo, el cursor no se mueve).
+  await editorScroller.hover()
+  await page.mouse.wheel(0, 800)
+  const top = await editorScroller.evaluate((el) => el.scrollTop)
+  expect(top).toBeGreaterThan(100)
+  expect(await editorWrap.getAttribute('data-cursor-offset')).toBe(cursor)
+
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+
+  // Mismo scroll (±1px) y mismo cursor: nada salta hacia arriba.
+  await expect
+    .poll(
+      async () =>
+        Math.abs((await editorScroller.evaluate((el) => el.scrollTop)) - top) <=
+        1,
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+  expect(await editorWrap.getAttribute('data-cursor-offset')).toBe(cursor)
+})
+
+// REVIEW.md 6: la primera línea visible es la que manda (no solo el px).
+async function firstVisibleEditorLine(page: Page): Promise<string | null> {
+  return page.locator('.cm-scroller:visible').evaluate((scroller) => {
+    const sr = scroller.getBoundingClientRect()
+    const gutters = Array.from(scroller.querySelectorAll('.cm-gutterElement'))
+    for (const g of gutters) {
+      const r = (g as HTMLElement).getBoundingClientRect()
+      if (r.bottom > sr.top + 1) return (g.textContent ?? '').trim()
+    }
+    return null
+  })
+}
+
+// REVIEW.md 6 (caso del reporte): línea 49 al borde superior → expandir →
+// colapsar → sigue la 49 al borde, no la 50-52.
+test('volver conserva la primera línea visible exacta', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  // Hay dos editores montados (móvil oculto + desktop): medir el visible.
+  const editorScroller = page.locator('.cm-scroller:visible')
+  // El gutter virtualiza: primero se baja cerca para que la 49 se renderice
+  // y luego se deja justo al borde superior del viewport.
+  await editorScroller.evaluate((el) => {
+    el.scrollTop = 800
+  })
+  await expect
+    .poll(() => firstVisibleEditorLine(page), { timeout: 10_000 })
+    .not.toBeNull()
+  await editorScroller.evaluate((el) => {
+    const sr = el.getBoundingClientRect()
+    const gutters = Array.from(el.querySelectorAll('.cm-gutterElement'))
+    const g49 = gutters.find((g) => (g.textContent ?? '').trim() === '49')
+    if (!g49) throw new Error('sin línea 49')
+    el.scrollTop += (g49 as HTMLElement).getBoundingClientRect().top - sr.top
+  })
+  expect(await firstVisibleEditorLine(page)).toBe('49')
+  const top = await editorScroller.evaluate((el) => el.scrollTop)
+
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+
+  await expect
+    .poll(() => firstVisibleEditorLine(page), { timeout: 10_000 })
+    .toBe('49')
+  const restored = await editorScroller.evaluate((el) => el.scrollTop)
+  expect(Math.abs(restored - top)).toBeLessThanOrEqual(1)
+})
+
+// REVIEW.md 6 (ruta que fallaba a la primera): salto único y lejano de un
+// tirón (como arrastrar la scrollbar, sin medir la zona intermedia) e
+// inmediatamente expandir → colapsar. El snapshot de CodeMirror ancla a la
+// línea realmente visible, así que no deriva aunque la zona no estuviera
+// medida al guardar.
+test('salto único lejano conserva la primera línea visible', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  const editorScroller = page.locator('.cm-scroller:visible')
+  // Un solo salto al 80% del documento, sin paradas intermedias.
+  await editorScroller.evaluate((el) => {
+    el.scrollTop = (el.scrollHeight - el.clientHeight) * 0.8
+  })
+  await expect
+    .poll(() => firstVisibleEditorLine(page), { timeout: 10_000 })
+    .not.toBeNull()
+  const firstLine = await firstVisibleEditorLine(page)
+  expect(firstLine).not.toBeNull()
+
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+
+  await expect
+    .poll(() => firstVisibleEditorLine(page), { timeout: 10_000 })
+    .toBe(firstLine)
+})
+
+/** Arrastra el divisor del split (desktop) los píxeles indicados. */
+async function dragSplit(page: Page, dx: number): Promise<void> {
+  const handle = page.locator('[data-slot="resizable-handle"]:visible')
+  const box = await handle.boundingBox()
+  expect(box).not.toBeNull()
+  const x = box!.x + box!.width / 2
+  const y = box!.y + box!.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + dx, y, { steps: 12 })
+  await page.mouse.up()
+}
+
+async function editorPanelWidth(page: Page): Promise<number> {
+  const box = await page.locator('#editor:visible').boundingBox()
+  expect(box).not.toBeNull()
+  return box!.width
+}
+
+// REVIEW.md 6: el divisor personalizado sobrevive a expandir/colapsar (y
+// con el mismo ancho, el wrapping no cambia y la posición cuadra).
+test('el divisor personalizado sobrevive a la vista en grande', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const longText =
+    'INT. CASA - DÍA\n\n' +
+    'Línea de acción para rellenar la página.\n\n'.repeat(120)
+  await writeScript(page, longText)
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  const before = await editorPanelWidth(page)
+  await dragSplit(page, 150)
+  const dragged = await editorPanelWidth(page)
+  expect(dragged - before).toBeGreaterThan(80)
+
+  // Posición de referencia tras el arrastre (el reflow ya asentó).
+  const editorScroller = page.locator('.cm-scroller:visible')
+  await page.locator('.cm-content:visible').press('ControlOrMeta+End')
+  const top = await editorScroller.evaluate((el) => el.scrollTop)
+
+  await page
+    .getByRole('button', { name: 'Ver vista previa en grande' })
+    .first()
+    .click()
+  await expect(page.locator('.cm-content:visible')).toBeHidden()
+  await page.getByRole('button', { name: 'Salir de vista ampliada' }).click()
+  await expect(page.locator('.cm-content:visible')).toBeVisible()
+
+  const restoredWidth = await editorPanelWidth(page)
+  expect(Math.abs(restoredWidth - dragged)).toBeLessThanOrEqual(12)
+  await expect
+    .poll(
+      async () =>
+        Math.abs((await editorScroller.evaluate((el) => el.scrollTop)) - top) <=
+        1,
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+})
+
+// REVIEW.md 6: el divisor persiste tras recarga (clave guion.split.v1).
+test('el divisor persiste tras recarga', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.locator('.cm-lineNumbers:visible')).toBeVisible()
+
+  const before = await editorPanelWidth(page)
+  await dragSplit(page, 150)
+  const dragged = await editorPanelWidth(page)
+  expect(dragged - before).toBeGreaterThan(80)
+
+  await page.reload()
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.locator('#editor:visible')).toBeVisible()
+  const restored = await editorPanelWidth(page)
+  expect(Math.abs(restored - dragged)).toBeLessThanOrEqual(12)
+})
+
 test('persistencia tras recarga', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({

@@ -10,7 +10,7 @@
 // dual-pane con `ResizablePanelGroup`. Móvil: drawer lateral + tabs
 // Editor/Preview. Los tokens Warm/Cinematic (§8) quedan fuera.
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Menu,
   PanelLeftClose,
@@ -23,33 +23,25 @@ import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import type { EditorView } from '@codemirror/view'
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from '@/components/ui/resizable'
-import { Editor } from '@/features/editor/Editor'
+import { EditorColumn } from '@/components/EditorColumn'
+import { SplitWorkspace } from '@/components/SplitWorkspace'
 import { jumpToOffset } from '@/features/editor/jumpToOffset'
 import { PdfPreview } from '@/features/preview/PdfPreview'
 import { usePdfPreview } from '@/features/preview/usePdfPreview'
-import {
-  WarningsLive,
-  WarningsPanel,
-  WarningsTrigger,
-} from '@/features/preview/Warnings'
 import { ImportButton } from '@/features/scripts/ImportButton'
 import { NewScriptDialog } from '@/features/scripts/NewScriptDialog'
 import { ScriptsDrawer } from '@/features/scripts/ScriptsDrawer'
 import { ScriptsSidebar } from '@/features/scripts/ScriptsSidebar'
 import { ExportButton } from '@/components/ExportButton'
+import { useEditorPosition } from '@/hooks/useEditorPosition'
 import { useParser } from '@/hooks/useParser'
 import { usePreviewOpen } from '@/hooks/usePreviewOpen'
+import { usePreviewScroll } from '@/hooks/usePreviewScroll'
 import { usePreviewZoom } from '@/hooks/usePreviewZoom'
 import { useScripts } from '@/hooks/useScripts'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
 import { useWarningsOpen } from '@/hooks/useWarningsOpen'
 import { sanitizeFilename } from '@/lib/scripts'
-import type { Warning } from '@/vendor/fountain.mjs'
 
 type Tab = 'editor' | 'preview'
 
@@ -91,64 +83,6 @@ function StatusBadge({
     >
       Iniciando motor…
     </span>
-  )
-}
-
-// Columna de editor a alto completo: el trigger de avisos vive en la
-// capitular (slot `headerAction`, 0px extra en reposo) y el panel cae como
-// hoja desde ella. `useId` por columna: móvil y desktop coexisten montados
-// (`md:hidden` / `hidden md:flex`), cada trigger apunta a su propio panel.
-// `onViewReady` propaga el `EditorView` de cada columna para el salto al texto
-// del punto 4. Las dos coexisten montadas (una oculta por CSS), así que el
-// consumidor elige la visible midiendo su contenedor.
-function EditorColumn({
-  text,
-  disabled,
-  onChange,
-  warnings,
-  warningsOpen,
-  onWarningsOpenChange,
-  onViewReady,
-}: {
-  text: string
-  disabled: boolean
-  onChange: (value: string) => void
-  warnings: Warning[]
-  warningsOpen: boolean
-  onWarningsOpenChange: (open: boolean) => void
-  /** Recibe la vista de esta columna con su contenedor (punto 4). */
-  onViewReady?: (view: EditorView | null, container: HTMLElement | null) => void
-}) {
-  const panelId = useId()
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  return (
-    <div className="relative mx-auto flex min-h-0 w-full max-w-[70ch] flex-1 flex-col xl:max-w-[820px]">
-      <div className="min-h-0 flex-1">
-        <Editor
-          value={text}
-          onChange={onChange}
-          disabled={disabled}
-          onViewReady={onViewReady}
-          headerAction={
-            <WarningsTrigger
-              ref={triggerRef}
-              warnings={warnings}
-              open={warningsOpen}
-              onOpenChange={onWarningsOpenChange}
-              panelId={panelId}
-            />
-          }
-        />
-      </div>
-      <WarningsLive warnings={warnings} />
-      <WarningsPanel
-        warnings={warnings}
-        open={warningsOpen}
-        onClose={() => onWarningsOpenChange(false)}
-        panelId={panelId}
-        triggerRef={triggerRef}
-      />
-    </div>
   )
 }
 
@@ -201,6 +135,11 @@ export default function App() {
     expanded: previewExpanded,
     toggleExpanded,
   } = usePreviewOpen()
+  // REVIEW.md 6: scroll del preview y cursor/scroll del editor por guion.
+  // Viven aquí (no en los paneles) para sobrevivir a los desmontajes al
+  // cerrar el panel, expandir o cambiar de tab.
+  const previewScroll = usePreviewScroll()
+  const editorPosition = useEditorPosition()
   // REVIEW.md 4: avisos como notas al pie — tira dockada + panel flotante.
   // `open` persiste en `guion.warnings.v1`; ante avisos nuevos solo se
   // ilumina el badge (sin auto-apertura: taparía manuscrito).
@@ -437,6 +376,8 @@ export default function App() {
                 warningsOpen={warningsOpen}
                 onWarningsOpenChange={setWarningsOpen}
                 onViewReady={handleViewReady}
+                persistKey={activeScriptId}
+                persistStore={editorPosition}
               />
             ) : (
               <div className="min-h-0 flex-1">
@@ -451,6 +392,8 @@ export default function App() {
                   doc={doc}
                   source={text}
                   onJumpToSource={handleJumpToSource}
+                  scrollKey={activeScriptId}
+                  scrollStore={previewScroll}
                 />
               </div>
             )}
@@ -483,55 +426,32 @@ export default function App() {
                       doc={doc}
                       source={text}
                       onJumpToSource={handleJumpToSource}
+                      scrollKey={activeScriptId}
+                      scrollStore={previewScroll}
                     />
                   </div>
                 </div>
               ) : previewOpen ? (
-                <ResizablePanelGroup
-                  orientation="horizontal"
-                  className="min-h-0 overflow-hidden p-4"
-                >
-                  <ResizablePanel
-                    defaultSize={50}
-                    minSize={30}
-                    className="min-h-0 overflow-hidden"
-                  >
-                    <div className="flex h-full min-h-0 flex-col overflow-hidden pr-2">
-                      <EditorColumn
-                        text={text}
-                        disabled={booting}
-                        onChange={handleChange}
-                        warnings={warnings}
-                        warningsOpen={warningsOpen}
-                        onWarningsOpenChange={setWarningsOpen}
-                        onViewReady={handleViewReady}
-                      />
-                    </div>
-                  </ResizablePanel>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel
-                    defaultSize={50}
-                    minSize={30}
-                    className="min-h-0 overflow-hidden"
-                  >
-                    <div
-                      id="preview-pane"
-                      className="flex h-full min-h-0 flex-col overflow-hidden pl-2"
-                    >
-                      <PdfPreview
-                        preview={preview}
-                        paused={previewPaused}
-                        onPausedChange={setPreviewPaused}
-                        zoom={zoom}
-                        expanded={previewExpanded}
-                        onToggleExpand={toggleExpanded}
-                        doc={doc}
-                        source={text}
-                        onJumpToSource={handleJumpToSource}
-                      />
-                    </div>
-                  </ResizablePanel>
-                </ResizablePanelGroup>
+                <SplitWorkspace
+                  scriptId={activeScriptId}
+                  text={text}
+                  disabled={booting}
+                  onChange={handleChange}
+                  warnings={warnings}
+                  warningsOpen={warningsOpen}
+                  onWarningsOpenChange={setWarningsOpen}
+                  onViewReady={handleViewReady}
+                  editorPosition={editorPosition}
+                  preview={preview}
+                  previewPaused={previewPaused}
+                  onPausedChange={setPreviewPaused}
+                  zoom={zoom}
+                  previewExpanded={previewExpanded}
+                  onToggleExpand={toggleExpanded}
+                  previewScroll={previewScroll}
+                  doc={doc}
+                  onJumpToSource={handleJumpToSource}
+                />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                   <EditorColumn
@@ -542,6 +462,8 @@ export default function App() {
                     warningsOpen={warningsOpen}
                     onWarningsOpenChange={setWarningsOpen}
                     onViewReady={handleViewReady}
+                    persistKey={activeScriptId}
+                    persistStore={editorPosition}
                   />
                 </div>
               )}

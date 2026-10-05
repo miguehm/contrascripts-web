@@ -35,6 +35,13 @@ interface PdfPageProps {
   scale: number
   /** Texto de la página para el hit-test del punto 4 (opcional). */
   onTextContent?: (pageNumber: number, items: PdfTextItem[]) => void
+  /**
+   * Reserva el tamaño sin esperar al viewport (punto 6): durante la
+   * restauración del scroll todas las páginas publican su `cssSize` para
+   * que los tops del ancla sean reales, no placeholders. El raster y el
+   * texto siguen perezosos (`inView`): no hay costo de pintado extra.
+   */
+  eagerSize?: boolean
 }
 
 export function PdfPage({
@@ -43,6 +50,7 @@ export function PdfPage({
   numPages,
   scale,
   onTextContent,
+  eagerSize = false,
 }: PdfPageProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -85,6 +93,38 @@ export function PdfPage({
     )
   }, [scale])
 
+  // Reserva del espacio: barata (`getPage` + medida, sin píxeles). Con
+  // `eagerSize` no espera al viewport para que los tops del ancla del
+  // punto 6 sean reales en todas las páginas desde el primer momento.
+  useEffect(() => {
+    if (!inView && !eagerSize) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const page = await pdf.getPage(pageNumber)
+        if (cancelled) {
+          page.cleanup()
+          return
+        }
+        const cssViewport = page.getViewport({ scale: rasterScale })
+        page.cleanup()
+        // Reserva/corrige el espacio con la medida absoluta (converge con
+        // el reescalado proporcional del efecto anterior).
+        if (!cancelled)
+          setCssSize({ w: cssViewport.width, h: cssViewport.height })
+      } catch (err: unknown) {
+        if (!cancelled) setFailed(true)
+        void err
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [pdf, pageNumber, rasterScale, inView, eagerSize])
+
+  // Raster perezoso: solo en viewport (+margen). Nunca ansioso, aunque la
+  // medida sí lo sea: pintar 100 páginas de golpe sería el costo que el
+  // lazy evita.
   useEffect(() => {
     if (!inView) return
     let cancelled = false
@@ -99,11 +139,6 @@ export function PdfPage({
           return
         }
         const dpr = Math.min(window.devicePixelRatio || 1, 2)
-        const cssViewport = page.getViewport({ scale: rasterScale })
-        // Reserva/corrige el espacio con la medida absoluta (converge con
-        // el reescalado proporcional del efecto anterior).
-        if (!cancelled)
-          setCssSize({ w: cssViewport.width, h: cssViewport.height })
         const viewport = page.getViewport({ scale: rasterScale * dpr })
         const tmp = document.createElement('canvas')
         tmp.width = Math.floor(viewport.width)

@@ -20,7 +20,15 @@
 import CodeMirror from '@uiw/react-codemirror'
 import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
-import { useEffect, useRef, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import type { EditorPositionStore } from '@/hooks/useEditorPosition'
 import { fountain } from './fountain'
 import { fountainTheme } from './fountainTheme'
 import { jumpLineHighlightField } from './jumpHighlight'
@@ -34,6 +42,14 @@ interface EditorProps {
   /** Recibe el `EditorView` de esta instancia con su contenedor (punto 4), o
    * `(view, null)` al desmontarse para que el consumidor la retire. */
   onViewReady?: (view: EditorView | null, container: HTMLElement | null) => void
+  /**
+   * Clave del documento visible (id del guion) + almacén de posición
+   * (REVIEW.md 6): guarda cursor + scroll por guion y los restituye al
+   * remontar (salir de la vista en grande / cambio de tab móvil) o al
+   * cambiar de guion.
+   */
+  persistKey?: string | null
+  persistStore?: EditorPositionStore | null
 }
 
 const PLACEHOLDER = 'INT. CASA - DÍA\n\nEscribe tu guion en Fountain…'
@@ -74,6 +90,8 @@ export function Editor({
   disabled = false,
   headerAction,
   onViewReady,
+  persistKey = null,
+  persistStore = null,
 }: EditorProps) {
   // El padre pasa el callback como arrow inline, así que no puede ser una
   // dependencia de un efecto: si lo fuera, cada render volvería a publicar y la
@@ -91,16 +109,159 @@ export function Editor({
   const viewRef = useRef<EditorView | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
+  // Punto 6: espejos para que los cleanups y listeners lean lo último (el
+  // padre pasa arrow inline y key por guion, ambos cambian sin remontar).
+  const persistKeyRef = useRef(persistKey)
+  const persistStoreRef = useRef(persistStore)
+  useEffect(() => {
+    persistKeyRef.current = persistKey
+    persistStoreRef.current = persistStore
+  })
+  // Limpieza del listener de scroll del scroller (se registra por vista).
+  const scrollCleanupRef = useRef<(() => void) | null>(null)
+  // Punto 6: mientras el restore asienta (CodeMirror mueve `scrollTop`
+  // al resolver el snapshot), ese scroll programático no debe ni guardarse
+  // ni cancelar el restore; solo los gestos del usuario lo cancelan (su
+  // scroll sí vale).
+  const restoringRef = useRef(false)
+  const cancelRestore = useCallback(() => {
+    restoringRef.current = false
+  }, [])
+
+  /**
+   * Expone el offset del cursor para e2e (`data-cursor-offset`): sin efecto
+   * visual, solo lectura de tests. Se actualiza en cada guardado y al
+   * restaurar.
+   */
+  const markCursor = useCallback(() => {
+    try {
+      const head = viewRef.current?.state.selection.main.head
+      if (wrapRef.current && Number.isFinite(head)) {
+        wrapRef.current.setAttribute('data-cursor-offset', String(head))
+      }
+    } catch {
+      // Vista en transición: sin marcador hasta el próximo guardado.
+    }
+  }, [])
+
+  /** Restituye la posición del guion (selección + snapshot de CodeMirror)
+   * con espera de asentamiento cancelable por gesto. */
+  const doRestore = useCallback(
+    (view: EditorView) => {
+      const store = persistStoreRef.current
+      const k = persistKeyRef.current
+      if (!store || !k || !store.has(k)) return
+      restoringRef.current = true
+      store.restoreView(k, view, {
+        isCancelled: () => !restoringRef.current,
+        onSettled: () => {
+          restoringRef.current = false
+          markCursor()
+        },
+      })
+    },
+    [markCursor],
+  )
+
   // Al desmontar se publica la vista con `container = null`: el consumidor
   // necesita saber *cuál* se va, no solo que alguna se fue. Deps vacías a
-  // propósito: es un cleanup de desmontaje, no una sincronización.
+  // propósito: es un cleanup de desmontaje, no una sincronización. Además se
+  // guarda cursor + scroll (punto 6) con `allowHidden`: al desmontar el
+  // layout puede estar ido pero la selección sigue válida.
   useEffect(
     () => () => {
       const view = viewRef.current
-      if (view) notifyRef.current?.(view, null)
+      if (view) {
+        persistStoreRef.current?.saveView(persistKeyRef.current, view, true)
+        notifyRef.current?.(view, null)
+      }
+      scrollCleanupRef.current?.()
+      scrollCleanupRef.current = null
       viewRef.current = null
     },
     [],
+  )
+
+  // Punto 6: al cambiar de guion sin remontar (misma instancia, otro texto),
+  // restituye la posición de ese guion si la hay. Corre tras el sync del doc
+  // del hijo CodeMirror (los efectos hijos van antes que los del padre).
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view || !persistKey || !persistStore) return
+    doRestore(view)
+  }, [persistKey, persistStore, doRestore])
+
+  /** Guarda cursor + scroll de la vista vigente (ignora la oculta). */
+  const savePosition = useCallback(() => {
+    const view = viewRef.current
+    if (view) {
+      persistStoreRef.current?.saveView(persistKeyRef.current, view)
+      markCursor()
+    }
+  }, [markCursor])
+
+  /**
+   * Guarda el cursor movido sin escribir ni scrollear (flechas, clic,
+   * Ctrl+End…): extensión por instancia, estable por `useMemo` para no
+   * reconfigurar la vista en cada tecla. Guardar no despacha, así que no
+   * hay bucle con el restore.
+   */
+  // Guarda el cursor movido sin escribir ni scrollear (flechas, clic,
+  // Ctrl+End…): se crea en efecto —la regla react-hooks/refs prohíbe leer
+  // refs durante el render (también vía callbacks usados en `useMemo`)— y
+  // react-codemirror la aplica reconfigurando la vista viva (sin remontar).
+  // Guardar no despacha, así que no hay bucle con el restore. Se pausa
+  // mientras hay restore en vuelo: el dispatch propio del restore también
+  // trae `selectionSet` y guardaría el scroll transitorio (0 pre-fijación)
+  // pisando la entrada buena.
+  const [selectionSaver, setSelectionSaver] = useState<Extension | null>(null)
+  useEffect(() => {
+    setSelectionSaver(
+      EditorView.updateListener.of((update) => {
+        if (update.selectionSet && !restoringRef.current) {
+          persistStoreRef.current?.saveView(persistKeyRef.current, update.view)
+          markCursor()
+        }
+      }),
+    )
+  }, [markCursor])
+  const extensions = useMemo(
+    () => (selectionSaver ? [...EXTENSIONS, selectionSaver] : EXTENSIONS),
+    [selectionSaver],
+  )
+
+  /** Escucha el scroll del scroller y lo guarda síncrono (un Map.set: el
+   * navegador ya coalescea por frame; el throttle rAF dejaba el último
+   * frame sin guardar ante un toggle inmediato). Pausado durante el
+   * restore en vuelo (misma razón que el `selectionSaver`). */
+  const watchScroller = useCallback(
+    (view: EditorView) => {
+      const scroller = view.scrollDOM
+      if (!scroller) return
+      const onScroll = () => {
+        if (restoringRef.current) return
+        persistStoreRef.current?.saveView(persistKeyRef.current, view)
+        markCursor()
+      }
+      scroller.addEventListener('scroll', onScroll, { passive: true })
+      scrollCleanupRef.current?.()
+      scrollCleanupRef.current = () => {
+        scroller.removeEventListener('scroll', onScroll)
+      }
+    },
+    [markCursor],
+  )
+
+  const handleCreateEditor = useCallback(
+    (view: EditorView) => {
+      viewRef.current = view
+      notifyRef.current?.(view, wrapRef.current)
+      watchScroller(view)
+      // Punto 6: remontaje tras la vista en grande / cambio de tab: vuelve
+      // a donde se dejó en vez de al inicio.
+      doRestore(view)
+    },
+    [watchScroller, doRestore],
   )
 
   return (
@@ -117,10 +278,20 @@ export function Editor({
       <div
         ref={wrapRef}
         className="min-h-0 flex-1 overflow-hidden rounded-sm border border-input bg-card focus-within:border-ring"
+        // Punto 6: un gesto del usuario corta la espera de asentamiento en
+        // vuelo (su scroll/cursor mandan sobre el restore).
+        onPointerDown={cancelRestore}
+        onWheel={cancelRestore}
+        onKeyDown={cancelRestore}
       >
         <CodeMirror
           value={value}
-          onChange={(next) => onChange(next)}
+          onChange={(next) => {
+            onChange(next)
+            // Punto 6: cada tecla deja la posición al día (cubre el cambio
+            // de guion sin remontar: al volver ya hay dato que restituir).
+            savePosition()
+          }}
           editable={!disabled}
           theme="none"
           placeholder={PLACEHOLDER}
@@ -128,12 +299,9 @@ export function Editor({
           aria-labelledby="fountain-editor-caption"
           aria-label="Editor Fountain"
           basicSetup={BASIC_SETUP}
-          extensions={EXTENSIONS}
+          extensions={extensions}
           className="h-full"
-          onCreateEditor={(view) => {
-            viewRef.current = view
-            notifyRef.current?.(view, wrapRef.current)
-          }}
+          onCreateEditor={handleCreateEditor}
         />
       </div>
     </div>
