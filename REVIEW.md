@@ -10,8 +10,7 @@
 8. (DONE) En desktop me gustaria que al hacer click en el numero del porcentaje este en lugar de ajustarlo al 100% fijo, lo ajuste al ancho de la ventana del previewer, un comportamiento parecido al que tiene la versión movil
 9. (DONE) Me gustaria crear un menú de configuraciones en el panel izquierdo, donde está el "acerca de", ahora será de configuraciones, el propio about se meterá ahí, me gustaria que definieras que configuraciones se deben meter ahí
 10. (DONE) Al estar en previewer completo (editor oculto), se traslade la logica del doble click en una palabra, al hacerlo, saldrá del modo preview completo y me llevara a la palabra en el editor, el mismo comportamiento que ya está pero ahora en el preview ancho completo
-11. En la barra superior me gustaria agregar un boton de "ayuda" donde muestre un cheatsheet de como escribir elementos fountain
-12. Verificar que no existen escenarios donde los guiones se pierdan
-13. Estrategia de importación/exportación de guiones
-14. Como se asegura que en cada actualización, los guiones no se lleguen a borrar?
-15. En la barra izquierda de guiones, que sean dos pestañas, una de listado de guiones y otra donde muestre un listado de todas las escenas, con el titulo de la escena en cuestion y una breve preview de la acción para agregar contexto (analizar creación de logica de botones de acciones laterales tipo VS Code)
+11. (DONE) En la barra superior me gustaria agregar un boton de "ayuda" donde muestre un cheatsheet de como escribir elementos fountain, como se escriben en texto plano y lo que representan en el formato de cine original.
+12. Estrategia de importación/exportación de guiones
+13. Como se asegura que en cada actualización, los guiones no se lleguen a borrar? Analizar estrategias de exportación, guardado automatico con avisos, Verificar que no existen escenarios donde los guiones se pierdan, etc...
+14. En la barra izquierda de guiones, que sean dos pestañas, una de listado de guiones y otra donde muestre un listado de todas las escenas, con el titulo de la escena en cuestion y una breve preview de la acción para agregar contexto (analizar creación de logica de botones de acciones laterales tipo VS Code)

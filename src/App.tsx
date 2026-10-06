@@ -29,6 +29,7 @@ import { jumpToOffset } from '@/features/editor/jumpToOffset'
 import { lineToOffset } from '@/features/editor/lineToOffset'
 import { PdfPreview } from '@/features/preview/PdfPreview'
 import { usePdfPreview } from '@/features/preview/usePdfPreview'
+import { HelpDialog } from '@/features/help/HelpDialog'
 import { ImportButton } from '@/features/scripts/ImportButton'
 import { NewScriptDialog } from '@/features/scripts/NewScriptDialog'
 import { ScriptsDrawer } from '@/features/scripts/ScriptsDrawer'
@@ -361,6 +362,7 @@ export default function App() {
             {stats.elements} elementos · ~{stats.pages} pág.
           </span>
           <ExportButton bytes={preview.bytes} filename={pdfName} />
+          <HelpDialog />
           <Button
             variant="ghost"
             size="icon-sm"

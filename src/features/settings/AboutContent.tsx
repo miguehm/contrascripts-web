@@ -39,7 +39,11 @@ export function AboutContent() {
         <kbd className="rounded-sm border border-border px-1 font-mono text-[11px]">
           B
         </kbd>{' '}
-        para colapsar el panel de guiones.
+        para colapsar el panel de guiones, y{' '}
+        <kbd className="rounded-sm border border-border px-1 font-mono text-[11px]">
+          F1
+        </kbd>{' '}
+        para abrir la ayuda de sintaxis Fountain.
       </p>
       <p>
         Licencia MIT — ver{' '}
