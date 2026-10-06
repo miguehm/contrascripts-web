@@ -37,6 +37,7 @@ function makeClient() {
           renders.push({ seq, text, resolve, reject })
         }),
     ),
+    paginate: vi.fn(() => Promise.resolve([])),
     terminate: vi.fn(),
   }
   return { client, renders }

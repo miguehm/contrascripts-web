@@ -53,7 +53,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Loader2, Maximize2, Minimize2 } from 'lucide-react'
 import type { PreviewZoom } from '@/hooks/usePreviewZoom'
-import type { PreviewScrollStore } from '@/hooks/usePreviewScroll'
+import {
+  RESTORE_ATTEMPTS,
+  RESTORE_STABLE_FRAMES,
+  RESTORE_TARGET_EPS,
+  RESTORE_TIMEOUT_MS,
+  type PreviewScrollStore,
+} from '@/hooks/usePreviewScroll'
 import {
   FIT_MIN,
   PAGE_WIDTH_PT,
@@ -88,6 +94,13 @@ interface PdfPreviewProps {
   source?: string
   /** Doble clic en un texto: lleva al editor con el cursor ahí. */
   onJumpToSource?: (offset: number) => void
+  /**
+   * Salto a escena (REVIEW.md punto 13, página exacta de `paginate()`):
+   * página absoluta + `key` que se incrementa en cada clic para re-disparar
+   * aunque se repita la escena. Se hace scroll a la página; si el número no
+   * es válido no se hace nada. `null` = sin petición.
+   */
+  sceneJump?: { page: number; key: number } | null
   /**
    * Clave del documento visible (id del guion) + almacén de scroll
    * (REVIEW.md 6): al desmontar se guarda la posición y al remontar (o al
@@ -180,6 +193,7 @@ export function PdfPreview({
   onJumpToSource,
   scrollKey = null,
   scrollStore = null,
+  sceneJump = null,
 }: PdfPreviewProps) {
   const { status, pdf, numPages, error, renderNow } = preview
   const {
@@ -387,6 +401,114 @@ export function PdfPreview({
     })
     return cancelRestore
   }, [pdf, numPages, scrollKey, scrollStore, cancelRestore, topsFor])
+
+  // Punto 13: salto a escena → página del PDF. La página es la absoluta
+  // que `paginate()` calculó en Go (incluye portada, = numeración de
+  // pdf.js). Sin destino válido no se hace nada. Solo la `key` dispara: si
+  // el PDF se regenera tras el clic (sigues escribiendo), la página vieja
+  // ya no vale sobre la paginación nueva y no se re-scrollea.
+  //
+  // El scroll converge por rAF como el restore del punto 6, por el mismo
+  // motivo: las páginas lejanas son placeholders (`minHeight: 200`) hasta
+  // que miden su altura real de forma perezosa, así que un solo scroll
+  // aterriza "a medio camino" y solo converge a clics. Aquí se activa la
+  // medida ansiosa (`sizingAll`), se fija `scrollTop` contra los tops
+  // vigentes y se re-resuelve hasta asentar. Instantáneo a propósito: una
+  // animación suave lucha contra la re-medición.
+  const sceneJumpKeyRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!sceneJump || !pdf) return
+    if (sceneJumpKeyRef.current === sceneJump.key) return
+    sceneJumpKeyRef.current = sceneJump.key
+    const page = sceneJump.page
+    if (!Number.isInteger(page) || page < 1 || page > numPages) return
+    const el = scrollRef.current
+    if (!el) return
+    let cancelled = false
+    restoringRef.current = true
+    setSizingAll(true)
+    // Como en el restore: la caché puede traer medidas del documento
+    // anterior tras una regeneración.
+    topsCacheRef.current = { height: -1, tops: [] }
+    const finish = (settled: boolean) => {
+      restoringRef.current = false
+      setSizingAll(false)
+      if (!settled) return
+      // Flash sobre la página destino, ya asentada (el canvas rasterizado
+      // no admite highlight DOM).
+      const target = docWrapRef.current?.querySelector<HTMLElement>(
+        `[data-page="${page}"]`,
+      )
+      if (!target) return
+      const prevOutline = target.style.outline
+      const prevOffset = target.style.outlineOffset
+      target.style.outline = '2px solid var(--primary)'
+      target.style.outlineOffset = '4px'
+      window.setTimeout(() => {
+        // Limpieza best-effort: si el nodo se desmontó, no pasa nada.
+        try {
+          target.style.outline = prevOutline
+          target.style.outlineOffset = prevOffset
+        } catch {
+          // Intencionadamente silencioso.
+        }
+      }, 2000)
+    }
+    const start = Date.now()
+    const attempt = (left: number, stable: number) => {
+      if (cancelled || !el.isConnected) {
+        finish(false)
+        return
+      }
+      const tops = topsFor(el)
+      const target = tops[page - 1]
+      if (target === undefined || !Number.isFinite(target)) {
+        // Layout aún sin medir: reintentar sin contar como estable.
+        if (left <= 0 || Date.now() - start > RESTORE_TIMEOUT_MS) {
+          finish(false)
+          return
+        }
+        requestAnimationFrame(() => attempt(left - 1, 0))
+        return
+      }
+      const max = el.scrollHeight - el.clientHeight
+      el.scrollTop = Math.min(Math.max(target, 0), Math.max(max, 0))
+      if (left <= 0 || typeof requestAnimationFrame === 'undefined') {
+        finish(true)
+        return
+      }
+      const height = el.scrollHeight
+      const applied = el.scrollTop
+      requestAnimationFrame(() => {
+        if (cancelled || !el.isConnected) {
+          finish(false)
+          return
+        }
+        const settled =
+          Math.abs(el.scrollTop - applied) <= RESTORE_TARGET_EPS &&
+          el.scrollHeight === height
+        const nextStable = settled ? stable + 1 : 0
+        if (
+          nextStable >= RESTORE_STABLE_FRAMES ||
+          Date.now() - start > RESTORE_TIMEOUT_MS
+        ) {
+          finish(true)
+          return
+        }
+        attempt(left - 1, nextStable)
+      })
+    }
+    // Un frame de cortesía para el remontaje (cambio de tab móvil).
+    requestAnimationFrame(() => attempt(RESTORE_ATTEMPTS, 0))
+    return () => {
+      cancelled = true
+      // Un gesto del usuario cancela el salto en vuelo (el `cancelRestore`
+      // de rueda/puntero/tecla solo baja el flag): aquí además se apaga la
+      // medida ansiosa y se reanuda el guardado normal de scroll.
+      restoringRef.current = false
+      setSizingAll(false)
+    }
+  }, [sceneJump, pdf, numPages, topsFor])
 
   /** Captura el origen del gesto: rects + scroll + punto bajo los dedos.
    * Válido porque al empezar no hay transform activo (layout = base).

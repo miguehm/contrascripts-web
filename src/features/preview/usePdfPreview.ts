@@ -42,6 +42,13 @@ export interface PdfPreviewOptions {
   visible?: boolean
   createClient?: (init: PdfWorkerInit) => PdfWorkerClient
   loadDocument?: (data: Uint8Array) => Promise<PdfDocument>
+  /**
+   * Cliente ya existente (p. ej. el compartido de `getSharedPdfWorkerClient`).
+   * Cuando se pasa, el hook no crea ni termina worker: la vida útil la lleva
+   * el dueño del cliente. Así `usePdfPreview` y `useScenePages` comparten un
+   * solo runtime Go en vez de cargar el `.wasm` dos veces.
+   */
+  client?: PdfWorkerClient | null
 }
 
 /** Debounce según tamaño (baseline T1: 105 KB → render ~1100 ms). */
@@ -64,6 +71,7 @@ export function usePdfPreview(
     visible = true,
     createClient = createPdfWorkerClient,
     loadDocument = defaultLoadDocument,
+    client = null,
   } = options
 
   const [status, setStatus] = useState<PdfPreviewStatus>('idle')
@@ -126,14 +134,19 @@ export function usePdfPreview(
   }, [clearTimer, doRender, text])
 
   // Cliente worker: una vez (con cleanup que lo termina en StrictMode-dev).
+  // Con `client` externo el hook solo lo adopta: ni lo crea ni lo termina.
   useEffect(() => {
-    const client = createClientRef.current(pdfWorkerUrls())
-    clientRef.current = client
-    return () => {
-      clientRef.current = null
-      client.terminate()
+    if (client) {
+      clientRef.current = client
+      return
     }
-  }, [])
+    const owned = createClientRef.current(pdfWorkerUrls())
+    clientRef.current = owned
+    return () => {
+      if (clientRef.current === owned) clientRef.current = null
+      owned.terminate()
+    }
+  }, [client])
 
   // Planificación: el efecto solo arma/desarma el timer. Al volver visible
   // con cambios pendientes se renderiza "inmediato" vía timeout 0 para no

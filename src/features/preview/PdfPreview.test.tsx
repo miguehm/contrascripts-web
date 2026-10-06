@@ -96,6 +96,7 @@ function Harness({
   doc = null,
   source = '',
   onJumpToSource,
+  sceneJump = null,
 }: {
   preview: PdfPreviewState
   paused?: boolean
@@ -105,6 +106,7 @@ function Harness({
   doc?: Document | null
   source?: string
   onJumpToSource?: (offset: number) => void
+  sceneJump?: { page: number; key: number } | null
 }) {
   const zoom = usePreviewZoom({ fitDefault })
   return (
@@ -117,6 +119,7 @@ function Harness({
       doc={doc}
       source={source}
       onJumpToSource={onJumpToSource}
+      sceneJump={sceneJump}
     />
   )
 }
@@ -1004,5 +1007,138 @@ describe('salto al editor (REVIEW.md punto 4)', () => {
 
     expect(onJumpToSource).not.toHaveBeenCalled()
     now.mockRestore()
+  })
+})
+
+describe('salto a escena (punto 13, página exacta de paginate)', () => {
+  /** rAF manual: los frames se avanzan a mano para cambiar el layout entre
+   * frames, como hacen las páginas al medir su altura real. */
+  let rafQueue: FrameRequestCallback[]
+  const stepFrames = (n: number) => {
+    act(() => {
+      for (let i = 0; i < n; i++) {
+        const cbs = rafQueue.splice(0)
+        cbs.forEach((cb) => cb(0))
+      }
+    })
+  }
+
+  beforeEach(() => {
+    rafQueue = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      rafQueue.push(cb)
+      return rafQueue.length
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubScroller() {
+    const scroller = document.querySelector<HTMLElement>(
+      '[data-testid="preview-pages"]',
+    )!
+    // Layout controlable: tops de página + altura del contenido.
+    // Placeholder: 3 páginas de ~200px en viewport de 400 (max 300).
+    const layout = { tops: [0, 200, 400], height: 700 }
+    scroller.getBoundingClientRect = vi.fn(
+      () =>
+        ({ left: 0, top: 0, width: 600, height: 400 }) as unknown as DOMRect,
+    )
+    Object.defineProperty(scroller, 'scrollHeight', {
+      configurable: true,
+      get: () => layout.height,
+    })
+    Object.defineProperty(scroller, 'clientHeight', {
+      configurable: true,
+      get: () => 400,
+    })
+    document.querySelectorAll<HTMLElement>('[data-page]').forEach((node, i) => {
+      node.getBoundingClientRect = vi.fn(
+        () =>
+          ({
+            left: 0,
+            top: (layout.tops[i] ?? 0) - scroller.scrollTop,
+            width: 600,
+            height: 792,
+          }) as unknown as DOMRect,
+      )
+    })
+    return { scroller, layout }
+  }
+
+  it('converge al top real aunque el layout crezca tras el primer scroll', () => {
+    // Repro del bug "a medio camino": las páginas miden su altura real
+    // DESPUÉS del primer scroll y el destino se desplaza.
+    render(
+      <Harness
+        preview={makePreview({ pdf: makePdf(3), numPages: 3 })}
+        sceneJump={{ page: 3, key: 1 }}
+      />,
+    )
+    const { scroller, layout } = stubScroller()
+    // Primer frame: tops de placeholder → scroll corto (300 < 1600 real).
+    stepFrames(1)
+    expect(scroller.scrollTop).toBe(300)
+    // Las páginas miden su altura real: todo crece.
+    layout.tops = [0, 800, 1600]
+    layout.height = 2000
+    stepFrames(30)
+    // Un solo `key` basta: el bucle corrige hasta el top real.
+    expect(scroller.scrollTop).toBe(1600)
+  })
+
+  it('re-dispara con key distinta y no con la misma tras regenerar', () => {
+    const { rerender } = render(
+      <Harness
+        preview={makePreview({ pdf: makePdf(3), numPages: 3 })}
+        sceneJump={{ page: 2, key: 1 }}
+      />,
+    )
+    const { scroller, layout } = stubScroller()
+    layout.tops = [0, 800, 1600]
+    layout.height = 2000
+    stepFrames(30)
+    expect(scroller.scrollTop).toBe(800)
+    // Nueva petición: salta.
+    rerender(
+      <Harness
+        preview={makePreview({ pdf: makePdf(3), numPages: 3 })}
+        sceneJump={{ page: 3, key: 2 }}
+      />,
+    )
+    stepFrames(30)
+    expect(scroller.scrollTop).toBe(1600)
+    // Mismo key con pdf regenerado (seguir escribiendo): la página vieja
+    // ya no vale sobre la paginación nueva, no se re-scrollea.
+    scroller.scrollTop = 0
+    rerender(
+      <Harness
+        preview={makePreview({ pdf: makePdf(3), numPages: 3 })}
+        sceneJump={{ page: 3, key: 2 }}
+      />,
+    )
+    stepFrames(30)
+    expect(scroller.scrollTop).toBe(0)
+  })
+
+  it('página fuera de rango → sin scroll y sin crash', () => {
+    render(
+      <Harness
+        preview={makePreview({ pdf: makePdf(2), numPages: 2 })}
+        sceneJump={{ page: 9, key: 1 }}
+      />,
+    )
+    const { scroller } = stubScroller()
+    stepFrames(10)
+    expect(scroller.scrollTop).toBe(0)
+  })
+
+  it('sin petición no hace scroll', () => {
+    render(<Harness preview={makePreview({ pdf: makePdf(2), numPages: 2 })} />)
+    const { scroller } = stubScroller()
+    stepFrames(10)
+    expect(scroller.scrollTop).toBe(0)
   })
 })

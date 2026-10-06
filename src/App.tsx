@@ -43,6 +43,8 @@ import { useScripts } from '@/hooks/useScripts'
 import { useSidebarCollapsed } from '@/hooks/useSidebarCollapsed'
 import { usePreferences } from '@/store/preferences'
 import { sanitizeFilename } from '@/lib/scripts'
+import { getSharedPdfWorkerClient } from '@/features/preview/pdfWorkerClient'
+import { useScenePages } from '@/features/preview/useScenePages'
 
 type Tab = 'editor' | 'preview'
 
@@ -319,10 +321,68 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [toggle, togglePreview, toggleExpanded])
   const previewVisible = isDesktop ? previewOpen : tab === 'preview'
+  // Un solo worker/runtime Go para preview y paginación: el orden de los
+  // hooks manda el orden de los mensajes, así el `render` entra antes que
+  // el `paginate` de la misma pausa y la preview no espera al mapa.
+  const pdfWorker = useMemo(() => getSharedPdfWorkerClient(), [])
   const preview = usePdfPreview(text, {
     paused: previewPaused,
     visible: previewVisible,
+    client: pdfWorker,
   })
+  const scenePages = useScenePages(text, {
+    paused: previewPaused,
+    visible: previewVisible,
+    client: pdfWorker,
+  })
+  const scenePagesByLine = scenePages.byLine
+
+  // REVIEW.md 13: clic en una escena → editor (reutiliza el camino del
+  // punto 7) + PDF (petición `sceneJump` con la página absoluta que
+  // `paginate()` calculó en Go). `key` se incrementa en cada clic para
+  // re-disparar el efecto aunque se repita la escena. El salto PDF exige
+  // mapa vigente (`snapshot === text`): con líneas desplazadas por una
+  // edición reciente, la clave podría ser de otra escena. Si el mapa aún
+  // no llegó (worker en vuelo), el salto PDF queda pendiente y se dispara
+  // al asentar (efecto de abajo); el editor salta ya.
+  const [sceneJump, setSceneJump] = useState<{
+    page: number
+    key: number
+  } | null>(null)
+  const sceneKeyRef = useRef(0)
+  const pendingSceneRef = useRef<{ line: number; text: string } | null>(null)
+  const handleJumpToScene = useCallback(
+    (line: number) => {
+      const page =
+        scenePages.snapshot === text ? scenePagesByLine.get(line) : undefined
+      if (page !== undefined) {
+        pendingSceneRef.current = null
+        sceneKeyRef.current += 1
+        setSceneJump({ page, key: sceneKeyRef.current })
+      } else {
+        pendingSceneRef.current = { line, text }
+      }
+      handleJumpToLine(line)
+    },
+    [scenePagesByLine, scenePages.snapshot, text, handleJumpToLine],
+  )
+  // Salto PDF pendiente: al llegar el mapa del texto clicado se dispara.
+  // Si se siguió escribiendo, el pendiente caduca (la línea ya no es la
+  // escena clicada) y no se inventa destino.
+  useEffect(() => {
+    const pending = pendingSceneRef.current
+    if (!pending) return
+    if (pending.text !== text) {
+      pendingSceneRef.current = null
+      return
+    }
+    if (scenePages.snapshot !== text) return
+    const page = scenePagesByLine.get(pending.line)
+    pendingSceneRef.current = null
+    if (page === undefined) return
+    sceneKeyRef.current += 1
+    setSceneJump({ page, key: sceneKeyRef.current })
+  }, [scenePages.snapshot, scenePagesByLine, text])
 
   const stats = useMemo(() => {
     const elements = doc?.elements.length ?? 0
@@ -486,6 +546,7 @@ export default function App() {
                   onJumpToSource={handleJumpToSource}
                   scrollKey={activeScriptId}
                   scrollStore={previewScroll}
+                  sceneJump={sceneJump}
                 />
               </div>
             )}
@@ -499,7 +560,11 @@ export default function App() {
                 collapsed ? 'w-14 px-2' : 'w-60'
               }`}
             >
-              <ScriptsSidebar collapsed={collapsed} />
+              <ScriptsSidebar
+                collapsed={collapsed}
+                doc={doc}
+                onJumpToLine={handleJumpToScene}
+              />
             </aside>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {previewOpen && previewExpanded ? (
@@ -522,6 +587,7 @@ export default function App() {
                       onJumpToSource={handleJumpToSource}
                       scrollKey={activeScriptId}
                       scrollStore={previewScroll}
+                      sceneJump={sceneJump}
                     />
                   </div>
                 </div>
@@ -546,6 +612,7 @@ export default function App() {
                   doc={doc}
                   onJumpToSource={handleJumpToSource}
                   onJumpToLine={handleJumpToLine}
+                  sceneJump={sceneJump}
                 />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
@@ -573,6 +640,8 @@ export default function App() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         returnRef={menuButtonRef}
+        doc={doc}
+        onJumpToLine={handleJumpToScene}
       />
       <NewScriptDialog
         open={isNewOpen}

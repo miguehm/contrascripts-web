@@ -14,10 +14,15 @@
 //   main → worker  { type: 'render', seq, text }
 //   worker → main  { type: 'done', seq, bytes } (buffer transferido)
 //                  | { type: 'render-error', seq, message }
+//   main → worker  { type: 'paginate', seq, text }
+//   worker → main  { type: 'paginate-done', seq, pages } (array clonado)
+//                  | { type: 'paginate-error', seq, message }
 //
 // Los renders se procesan en orden de llegada; un render anterior que siga
 // encolado cuando llega otro más nuevo es trabajo desperdiciado que el main
 // descarta por `seq`. Con el debounce del hook como mucho hay uno en vuelo.
+// `paginate` corre el mismo layout Go que `render` y bloquea igual este
+// hilo, por eso vive aquí y no en el main thread.
 
 interface InitMessage {
   type: 'init'
@@ -31,7 +36,23 @@ interface RenderMessage {
   text: string
 }
 
-type InMessage = InitMessage | RenderMessage
+interface PaginateMessage {
+  type: 'paginate'
+  seq: number
+  text: string
+}
+
+type InMessage = InitMessage | RenderMessage | PaginateMessage
+
+// Este archivo corre como worker CLÁSICO (sin `type: 'module'`): no puede
+// contener NINGUNA sentencia `import`/`export`, ni siquiera solo de tipos —
+// Vite emite entonces `export {};` y el worker no parsea (`SyntaxError:
+// Unexpected token 'export'`). Por eso `ScenePage` se duplica aquí sin
+// exportar (canónico en `pdfWorkerClient.ts`).
+interface ScenePage {
+  line: number
+  page: number
+}
 
 // El worker se compila con los libs DOM de la app, que no traen
 // `importScripts` ni el `postMessage` con transfer de un
@@ -48,6 +69,7 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope
 
 let renderPDF: ((text: string) => Uint8Array | null) | null = null
+let paginate: ((text: string) => string | null) | null = null
 let failure: Error | null = null
 let ready: Promise<void> | null = null
 
@@ -110,6 +132,13 @@ function ensureReady(wasmExecUrl: string, pdfWasmUrl: string): Promise<void> {
         )
       }
       renderPDF = fn as (text: string) => Uint8Array | null
+      const pg = (globalThis as Record<string, unknown>).fountainPaginate
+      if (typeof pg !== 'function') {
+        throw new Error(
+          'el módulo no registró globalThis.fountainPaginate (¿wasm desactualizado?)',
+        )
+      }
+      paginate = pg as (text: string) => string | null
     })()
     // Un init fallido no se cachea: el siguiente init reintenta.
     ready.catch(() => {
@@ -161,6 +190,43 @@ scope.onmessage = (ev: MessageEvent<InMessage>) => {
     } catch (err: unknown) {
       scope.postMessage({
         type: 'render-error',
+        seq: msg.seq,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+    return
+  }
+  if (msg.type === 'paginate') {
+    if (failure) {
+      scope.postMessage({
+        type: 'paginate-error',
+        seq: msg.seq,
+        message: failure.message,
+      })
+      return
+    }
+    if (!paginate) {
+      scope.postMessage({
+        type: 'paginate-error',
+        seq: msg.seq,
+        message: 'motor PDF aún no inicializado (falta init)',
+      })
+      return
+    }
+    try {
+      // Llamada Go síncrona: bloquea ESTE hilo, nunca el main. Se parsea
+      // aquí para que el main reciba el array listo (clon estructurado).
+      const raw = paginate(msg.text)
+      if (raw === null || raw === undefined) {
+        throw new Error(
+          'paginate() falló dentro del módulo wasm (ver consola del worker)',
+        )
+      }
+      const pages = JSON.parse(raw) as ScenePage[]
+      scope.postMessage({ type: 'paginate-done', seq: msg.seq, pages })
+    } catch (err: unknown) {
+      scope.postMessage({
+        type: 'paginate-error',
         seq: msg.seq,
         message: err instanceof Error ? err.message : String(err),
       })
