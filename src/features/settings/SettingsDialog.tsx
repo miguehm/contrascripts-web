@@ -8,6 +8,7 @@
 
 import { useState } from 'react'
 import {
+  Archive,
   FileText,
   Info,
   Palette,
@@ -27,15 +28,17 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { AboutContent } from './AboutContent'
 import { AppearanceSection } from './sections/AppearanceSection'
+import { BackupSection } from './sections/BackupSection'
 import { EditorSection } from './sections/EditorSection'
 import { PreviewSection } from './sections/PreviewSection'
 
-type SectionId = 'appearance' | 'editor' | 'preview' | 'about'
+type SectionId = 'appearance' | 'editor' | 'preview' | 'backup' | 'about'
 
 const SECTIONS: { id: SectionId; label: string; Icon: typeof Info }[] = [
   { id: 'appearance', label: 'Apariencia', Icon: Palette },
   { id: 'editor', label: 'Editor', Icon: Type },
   { id: 'preview', label: 'Vista previa', Icon: FileText },
+  { id: 'backup', label: 'Copias', Icon: Archive },
   { id: 'about', label: 'Acerca de', Icon: Info },
 ]
 
@@ -107,6 +110,7 @@ export function SettingsDialog({
             {section === 'appearance' && <AppearanceSection />}
             {section === 'editor' && <EditorSection />}
             {section === 'preview' && <PreviewSection />}
+            {section === 'backup' && <BackupSection />}
             {section === 'about' && <AboutContent />}
           </ScrollArea>
         </div>

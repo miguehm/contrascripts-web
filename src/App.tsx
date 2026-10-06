@@ -87,6 +87,37 @@ function StatusBadge({
   )
 }
 
+function SaveBadge({
+  saveState,
+  lastSavedAt,
+}: {
+  saveState: 'saved' | 'saving' | 'error'
+  lastSavedAt: number | null
+}) {
+  const text =
+    saveState === 'saving'
+      ? 'Guardando…'
+      : saveState === 'error'
+        ? 'Error al guardar'
+        : lastSavedAt === null
+          ? 'Guardado'
+          : `Guardado ${new Date(lastSavedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      title={
+        saveState === 'error'
+          ? 'El último guardado falló: exporta tus guiones'
+          : 'Guardado automático en este navegador'
+      }
+      className="hidden font-mono text-[11px] text-muted-foreground tabular-nums lg:inline"
+    >
+      {text}
+    </span>
+  )
+}
+
 export default function App() {
   const {
     activeScript,
@@ -96,6 +127,8 @@ export default function App() {
     newSuggestion,
     confirmNewScript,
     cancelNewScript,
+    saveState,
+    lastSavedAt,
   } = useScripts()
   const [tab, setTab] = useState<Tab>('editor')
   const [previewPaused, setPreviewPaused] = useState(false)
@@ -356,6 +389,7 @@ export default function App() {
             {activeScript?.title ?? 'Sin guiones'}
           </span>
         </h1>
+        <SaveBadge saveState={saveState} lastSavedAt={lastSavedAt} />
         <StatusBadge status={status} onRetry={retry} />
         <span className="ml-auto flex items-center gap-3">
           <span className="hidden font-mono text-xs text-muted-foreground tabular-nums sm:inline">
