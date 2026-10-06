@@ -911,3 +911,83 @@ test('persistencia tras recarga', async ({ page }) => {
   })
   await expect(page.locator('.cm-content:visible')).toContainText(marker)
 })
+
+test('pestaña Escenas: lista, salto al editor y persiste tras recarga', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  // Relleno para que la 2ª escena caiga en la página 2 del PDF.
+  const filler = 'Línea de acción para rellenar la página.\n\n'.repeat(60)
+  await writeScript(
+    page,
+    `EXT. PATIO - DÍA\n\nUn día precioso.\n\n${filler}INT. CASA - NOCHE\n\nBrick entra.\n`,
+  )
+  // Esperar al PDF de 2+ páginas antes de clicar (si no, el salto a
+  // página exacta se resolvería contra el render anterior). Los wrappers
+  // `[data-page]` montan con `numPages`, sin depender del raster lazy.
+  await expect
+    .poll(() => page.locator('[data-page]').count(), { timeout: 30_000 })
+    .toBeGreaterThan(1)
+  // Abrir la pestaña de escenas del sidebar (desktop).
+  await page
+    .getByRole('tab', { name: /Escenas/ })
+    .first()
+    .click()
+  await expect(
+    page.getByRole('button', { name: /Ir a la escena 2/ }),
+  ).toBeVisible()
+  // La preview de acción da contexto (dentro del listado de escenas).
+  await expect(
+    page
+      .getByRole('list', { name: 'Escenas del guion' })
+      .getByText('Brick entra.'),
+  ).toBeVisible()
+  // Clic en la 2ª escena → el cursor del editor cae en su línea…
+  await page.getByRole('button', { name: /Ir a la escena 2/ }).click()
+  await expect
+    .poll(() => readCaretLine(page), { timeout: 10_000 })
+    .toContain('INT. CASA - NOCHE')
+  // …y el previewer scrollea a su página exacta (paginación Go, no
+  // substring). Un solo clic basta: el bucle de asentamiento lleva la
+  // página destino al borde superior aunque el layout crezca tras el
+  // primer scroll. Se aserta el error de control (scroll real vs top
+  // medido, con tope físico de scroll: la última página no siempre puede
+  // alinearse al borde), no el flash (2s). La escena 2 es la última del
+  // guion: su página es la última.
+  const controlErrorOfLastPage = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector(
+        '[data-testid="preview-pages"]',
+      ) as HTMLElement | null
+      const pages = [...document.querySelectorAll('[data-page]')]
+      const last = pages[pages.length - 1] as HTMLElement | undefined
+      if (!scroller || !last) return Number.POSITIVE_INFINITY
+      const top =
+        last.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop
+      const max = Math.max(scroller.scrollHeight - scroller.clientHeight, 0)
+      return Math.abs(scroller.scrollTop - Math.min(top, max))
+    })
+  await expect.poll(controlErrorOfLastPage, { timeout: 20_000 }).toBeLessThan(3)
+  // Estable: sigue ahí 1.2s después sin segundo clic (sin deriva).
+  await page.waitForTimeout(1200)
+  await expect.poll(controlErrorOfLastPage, { timeout: 5_000 }).toBeLessThan(3)
+  // La pestaña activa se recuerda tras recarga.
+  await expect
+    .poll(
+      async () => page.evaluate(() => localStorage.getItem('guion.ui.v1')),
+      { timeout: 10_000 },
+    )
+    .toContain('scenes')
+  await page.reload()
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(
+    page.getByRole('button', { name: /Ir a la escena 2/ }),
+  ).toBeVisible()
+})
