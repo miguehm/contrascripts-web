@@ -63,6 +63,7 @@ export function ScriptsSidebar({
     requestCreateScript,
     renameScript,
     removeScript,
+    restoreScript,
     selectScript,
   } = useScripts()
   const [renameTarget, setRenameTarget] = useState<Script | null>(null)
@@ -98,8 +99,12 @@ export function ScriptsSidebar({
 
   const commitDelete = () => {
     if (!deleteTarget) return
-    removeScript(deleteTarget.id)
-    toast.success('Guion borrado', { description: deleteTarget.title })
+    const { id, title } = deleteTarget
+    removeScript(id)
+    toast.success('Guion movido a la papelera', {
+      description: `${title} · se puede recuperar 30 días.`,
+      action: { label: 'Deshacer', onClick: () => restoreScript(id) },
+    })
     setDeleteTarget(null)
   }
 
@@ -328,7 +333,7 @@ export function ScriptsSidebar({
         </DialogContent>
       </Dialog>
 
-      {/* Confirmar borrado */}
+      {/* Confirmar borrado (papelera 30 días, punto 12) */}
       <Dialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -337,20 +342,31 @@ export function ScriptsSidebar({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Borrar guion</DialogTitle>
+            <DialogTitle>Mover a la papelera</DialogTitle>
             <DialogDescription>
-              Se borrará “{deleteTarget?.title}” de este navegador. Esta acción
-              no se puede deshacer.
+              “{deleteTarget?.title}” se moverá a la papelera de este navegador
+              y se podrá recuperar durante 30 días.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              Cancelar
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (deleteTarget) exportScript(deleteTarget)
+              }}
+            >
+              <Download aria-hidden="true" />
+              Exportar antes
             </Button>
-            <Button variant="destructive" onClick={commitDelete}>
-              <Trash2 aria-hidden="true" />
-              Borrar
-            </Button>
+            <span className="flex gap-2">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={commitDelete}>
+                <Trash2 aria-hidden="true" />
+                Mover
+              </Button>
+            </span>
           </DialogFooter>
         </DialogContent>
       </Dialog>

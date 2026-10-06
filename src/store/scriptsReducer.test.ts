@@ -17,12 +17,16 @@ function script(over: Partial<Script> = {}): Script {
 
 function state(over: Partial<ScriptsState> = {}): ScriptsState {
   const scripts = [script(), script({ id: 's2', updatedAt: 2000 })]
-  return { scripts, activeId: 's1', ...over }
+  return { scripts, activeId: 's1', trash: [], ...over }
 }
 
 describe('initScriptsState', () => {
   it('lista vacía → sin activo', () => {
-    expect(initScriptsState([])).toEqual({ scripts: [], activeId: null })
+    expect(initScriptsState([])).toEqual({
+      scripts: [],
+      activeId: null,
+      trash: [],
+    })
   })
 
   it('ordena reciente primero y activa el primero', () => {
@@ -94,25 +98,69 @@ describe('rename', () => {
   })
 })
 
-describe('remove', () => {
-  it('borra y mueve el activo al más reciente restante', () => {
+describe('remove / restore / purge', () => {
+  it('borra a papelera y mueve el activo al más reciente restante', () => {
     const s = scriptsReducer(state({ activeId: 's1' }), {
       type: 'remove',
       id: 's1',
     })
     expect(s.scripts.map((x) => x.id)).toEqual(['s2'])
     expect(s.activeId).toBe('s2')
+    expect(s.trash).toHaveLength(1)
+    expect(s.trash[0]?.script.id).toBe('s1')
   })
 
-  it('borrar el último deja lista vacía sin activo', () => {
+  it('borrar el último deja lista vacía sin activo pero con papelera', () => {
     const st = state({ scripts: [script()], activeId: 's1' })
     const s = scriptsReducer(st, { type: 'remove', id: 's1' })
-    expect(s).toEqual({ scripts: [], activeId: null })
+    expect(s.scripts).toEqual([])
+    expect(s.activeId).toBe(null)
+    expect(s.trash).toHaveLength(1)
   })
 
   it('id desconocido → sin cambios', () => {
     const st = state()
     expect(scriptsReducer(st, { type: 'remove', id: 'no' })).toBe(st)
+  })
+
+  it('restore devuelve el guion y lo activa', () => {
+    const removed = scriptsReducer(state(), { type: 'remove', id: 's1' })
+    const s = scriptsReducer(removed, { type: 'restore', id: 's1' })
+    expect(s.scripts.map((x) => x.id).sort()).toEqual(['s1', 's2'])
+    expect(s.activeId).toBe('s1')
+    expect(s.trash).toEqual([])
+  })
+
+  it('restore con id desconocido → sin cambios', () => {
+    const st = state()
+    expect(scriptsReducer(st, { type: 'restore', id: 'no' })).toBe(st)
+  })
+
+  it('purge elimina definitivo solo de papelera', () => {
+    const removed = scriptsReducer(state(), { type: 'remove', id: 's1' })
+    const s = scriptsReducer(removed, { type: 'purge', id: 's1' })
+    expect(s.trash).toEqual([])
+    expect(s.scripts.map((x) => x.id)).toEqual(['s2'])
+  })
+
+  it('init purga papelera caducada (>30 días)', () => {
+    const now = 2_000_000_000_000
+    const old = {
+      script: script({ id: 'old' }),
+      deletedAt: now - 31 * 86400_000,
+    }
+    const fresh = { script: script({ id: 'new' }), deletedAt: now - 86400_000 }
+    const s = initScriptsState([script()], null, [old, fresh], now)
+    expect(s.trash.map((t) => t.script.id)).toEqual(['new'])
+  })
+
+  it('importMany añade y activa el primero', () => {
+    const s = scriptsReducer(state(), {
+      type: 'importMany',
+      scripts: [script({ id: 'imp', title: 'Imp' })],
+    })
+    expect(s.scripts.some((x) => x.id === 'imp')).toBe(true)
+    expect(s.activeId).toBe('imp')
   })
 })
 

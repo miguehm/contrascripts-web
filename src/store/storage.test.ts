@@ -2,7 +2,15 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Script } from '@/types/Script'
-import { SCRIPTS_KEY, loadScripts, saveScripts } from '@/store/storage'
+import {
+  CORRUPT_PREFIX,
+  SCRIPTS_KEY,
+  loadScripts,
+  loadScriptsDetailed,
+  migrateScripts,
+  quarantineCorrupt,
+  saveScripts,
+} from '@/store/storage'
 
 function script(over: Partial<Script> = {}): Script {
   return {
@@ -56,6 +64,34 @@ describe('loadScripts', () => {
     expect(loadScripts()).toEqual([])
   })
 
+  it('detailed distingue corrupto de vacío y cuenta descartados', () => {
+    vi.stubGlobal('localStorage', mockStorage({ [SCRIPTS_KEY]: '{no-json' }))
+    const corrupt = loadScriptsDetailed()
+    expect(corrupt.scripts).toEqual([])
+    expect(corrupt.corruptRaw).toBe('{no-json')
+    expect(corrupt.dropped).toBe(0)
+
+    vi.stubGlobal('localStorage', mockStorage())
+    const empty = loadScriptsDetailed()
+    expect(empty).toEqual({ scripts: [], corruptRaw: null, dropped: 0 })
+  })
+
+  it('migrateScripts acepta v0 sin updatedAt y cuenta lo irreconstruible', () => {
+    const legacy = { id: 's9', title: 'Viejo', text: 'x' }
+    const { scripts, dropped } = migrateScripts([script(), legacy, null])
+    expect(dropped).toBe(1)
+    expect(scripts).toHaveLength(2)
+    expect(scripts.find((s) => s.id === 's9')?.updatedAt).toBe(0)
+  })
+
+  it('quarantineCorrupt guarda el raw sin lanzar y devuelve clave', () => {
+    const storage = mockStorage()
+    vi.stubGlobal('localStorage', storage)
+    const key = quarantineCorrupt('{no-json')
+    expect(key?.startsWith(CORRUPT_PREFIX)).toBe(true)
+    expect(key ? storage.store[key] : null).toBe('{no-json')
+  })
+
   it('forma inesperada (no array / items inválidos) → [] o filtrado', () => {
     vi.stubGlobal(
       'localStorage',
@@ -78,12 +114,25 @@ describe('loadScripts', () => {
 })
 
 describe('saveScripts', () => {
-  it('persiste como JSON y reporta quotaExceeded false', () => {
+  it('persiste como JSON y reporta sin errores', () => {
     const storage = mockStorage()
     vi.stubGlobal('localStorage', storage)
     const list = [script()]
-    expect(saveScripts(list)).toEqual({ quotaExceeded: false })
+    expect(saveScripts(list)).toEqual({
+      quotaExceeded: false,
+      verifyFailed: false,
+    })
     expect(storage.store[SCRIPTS_KEY]).toBe(JSON.stringify(list))
+  })
+
+  it('read-back distinto → verifyFailed true', () => {
+    const storage = mockStorage()
+    storage.getItem.mockImplementation(() => 'otro-valor')
+    vi.stubGlobal('localStorage', storage)
+    expect(saveScripts([script()])).toEqual({
+      quotaExceeded: false,
+      verifyFailed: true,
+    })
   })
 
   it('QuotaExceededError → { quotaExceeded: true } sin lanzar', () => {
@@ -93,7 +142,10 @@ describe('saveScripts', () => {
       throw err
     })
     vi.stubGlobal('localStorage', storage)
-    expect(saveScripts([script()])).toEqual({ quotaExceeded: true })
+    expect(saveScripts([script()])).toEqual({
+      quotaExceeded: true,
+      verifyFailed: false,
+    })
   })
 
   it('otro error de setItem no se confunde con falta de cuota', () => {
@@ -102,6 +154,9 @@ describe('saveScripts', () => {
       throw new Error('boom')
     })
     vi.stubGlobal('localStorage', storage)
-    expect(saveScripts([script()])).toEqual({ quotaExceeded: false })
+    expect(saveScripts([script()])).toEqual({
+      quotaExceeded: false,
+      verifyFailed: false,
+    })
   })
 })
