@@ -7,15 +7,24 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import type { Document } from '@/vendor/fountain.mjs'
 import { ScriptsSidebar } from './ScriptsSidebar'
 
 interface Props {
   open: boolean
   onClose: () => void
   returnRef?: React.RefObject<HTMLElement | null>
+  doc?: Document | null
+  onJumpToLine?: (line: number) => void
 }
 
-export function ScriptsDrawer({ open, onClose, returnRef }: Props) {
+export function ScriptsDrawer({
+  open,
+  onClose,
+  returnRef,
+  doc = null,
+  onJumpToLine,
+}: Props) {
   const panelRef = useRef<HTMLElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -65,7 +74,11 @@ export function ScriptsDrawer({ open, onClose, returnRef }: Props) {
           </Button>
         </div>
         <div className="min-h-0 flex-1">
-          <ScriptsSidebar onNavigate={onClose} />
+          <ScriptsSidebar
+            onNavigate={onClose}
+            doc={doc}
+            onJumpToLine={onJumpToLine}
+          />
         </div>
       </aside>
     </div>

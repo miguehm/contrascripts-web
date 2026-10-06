@@ -1,9 +1,10 @@
 // src/store/uiStorage.ts — único acceso a localStorage de prefs UI.
 //
 // Los componentes tienen prohibido tocar `localStorage` (AGENTS.md nº2);
-// pasan por `useSidebarCollapsed` / `usePreviewZoom` → este módulo. Guarda
-// el colapso del sidebar en desktop más la escala del zoom del preview
-// (REVIEW.md punto 3) y el modo de ajuste al ancho en móvil (punto 1).
+// pasan por `useSidebarCollapsed` / `usePreviewZoom` / `useSidebarTab` →
+// este módulo. Guarda el colapso del sidebar en desktop más la escala del
+// zoom del preview (REVIEW.md punto 3), el modo de ajuste al ancho en
+// móvil (punto 1) y la pestaña activa del sidebar (punto 13).
 // El drawer móvil es efímero y nunca se persiste.
 // Un dato corrupto o ausente cae a los defaults sin tumbar el boot.
 
@@ -11,6 +12,9 @@ export const UI_KEY = 'guion.ui.v1'
 
 /** Escala por defecto del preview (100%). */
 export const DEFAULT_ZOOM = 1
+
+/** Pestañas del sidebar (REVIEW.md punto 13). */
+export type SidebarTab = 'scripts' | 'scenes'
 
 export interface UiPrefs {
   collapsed: boolean
@@ -21,6 +25,9 @@ export interface UiPrefs {
    * ausente = sin preferencia (el hook decide por layout); solo `true` o
    * `false` explícitos cuentan como preferencia guardada. */
   fitWidth?: boolean
+  /** Pestaña activa del sidebar (REVIEW.md punto 13). Opcional en lectura:
+   * ausente o inválida = `scripts` (compat con prefs viejas). */
+  sidebarTab?: SidebarTab
 }
 
 const DEFAULTS: UiPrefs = { collapsed: false, zoom: DEFAULT_ZOOM }
@@ -41,6 +48,10 @@ function isValidFitWidth(value: unknown): value is boolean {
   return typeof value === 'boolean'
 }
 
+function isValidSidebarTab(value: unknown): value is SidebarTab {
+  return value === 'scripts' || value === 'scenes'
+}
+
 /** Lee las prefs UI. Nunca lanza: ante ausencia, JSON roto o forma
  * inesperada, devuelve el valor por defecto. Un `zoom` inválido cae a
  * `DEFAULT_ZOOM` sin descartar `collapsed`; un `fitWidth` ausente o
@@ -56,6 +67,7 @@ export function loadUi(): UiPrefs {
       zoom: isValidZoom(parsed.zoom) ? parsed.zoom : DEFAULT_ZOOM,
     }
     if (isValidFitWidth(parsed.fitWidth)) out.fitWidth = parsed.fitWidth
+    if (isValidSidebarTab(parsed.sidebarTab)) out.sidebarTab = parsed.sidebarTab
     return out
   } catch {
     return { ...DEFAULTS }
@@ -99,6 +111,31 @@ export function saveFitWidth(fitWidth: boolean): void {
   try {
     const current = loadUi()
     saveUi({ ...current, fitWidth })
+  } catch {
+    // Intencionadamente silencioso: es preferencia cosmética.
+  }
+}
+
+/** Lee la pestaña activa del sidebar. Inválida o ausente → `scripts`.
+ * Nunca lanza. */
+export function loadSidebarTab(): SidebarTab {
+  try {
+    const raw = globalThis.localStorage?.getItem(UI_KEY)
+    if (raw == null || raw === '') return 'scripts'
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return 'scripts'
+    const tab = (parsed as Record<string, unknown>).sidebarTab
+    return isValidSidebarTab(tab) ? tab : 'scripts'
+  } catch {
+    return 'scripts'
+  }
+}
+
+/** Persiste solo `sidebarTab` con read-modify-write. Nunca lanza. */
+export function saveSidebarTab(tab: SidebarTab): void {
+  try {
+    const current = loadUi()
+    saveUi({ ...current, sidebarTab: tab })
   } catch {
     // Intencionadamente silencioso: es preferencia cosmética.
   }

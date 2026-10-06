@@ -1,13 +1,15 @@
-// src/features/scripts/ScriptsSidebar.tsx — lista de guiones (§6).
+// src/features/scripts/ScriptsSidebar.tsx — guiones (§6) + escenas (REVIEW 13).
 //
-// Crear, renombrar, borrar (con `dialog` de confirmación) y seleccionar el
-// guion activo; importar/exportar `.fountain`. Todo el estado viene de
-// `useScripts()` — aquí no hay `localStorage`.
+// Dos pestañas (`Guiones | Escenas`): crear/renombrar/borrar/seleccionar el
+// guion activo, o saltar a una escena (título + preview de acción). Todo el
+// estado viene de hooks — aquí no hay `localStorage` directo.
 
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  Clapperboard,
   Download,
+  Files,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -35,9 +37,13 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useScripts } from '@/hooks/useScripts'
+import { useSidebarTab } from '@/hooks/useSidebarTab'
 import { filterScriptsByTitle } from '@/lib/scripts'
+import { getScenes } from '@/lib/scenes'
 import type { Script } from '@/types/Script'
+import type { Document } from '@/vendor/fountain.mjs'
 import { SettingsDialog } from '../settings/SettingsDialog'
+import { ScenesList } from '../scenes/ScenesList'
 import { ImportButton } from './ImportButton'
 import { exportScript } from './scriptFiles'
 
@@ -53,9 +59,15 @@ function formatDate(ts: number): string {
 export function ScriptsSidebar({
   collapsed = false,
   onNavigate,
+  doc = null,
+  onJumpToLine,
 }: {
   collapsed?: boolean
   onNavigate?: () => void
+  /** Documento parseado del guion activo, para derivar las escenas. */
+  doc?: Document | null
+  /** Salto a línea del fuente (camino de los puntos 4/7). */
+  onJumpToLine?: (line: number) => void
 }) {
   const {
     scripts,
@@ -118,12 +130,53 @@ export function ScriptsSidebar({
     onNavigate?.()
   }
 
+  // REVIEW.md 13: pestaña activa con persistencia tras recarga.
+  const { tab, setTab } = useSidebarTab()
+  const scenes = useMemo(() => getScenes(doc), [doc])
+
+  const handleJumpToScene = (line: number) => {
+    onJumpToLine?.(line)
+    onNavigate?.()
+  }
+
   if (collapsed) {
+    // Rail tipo VS Code: iconos de pestaña arriba, acciones debajo.
     return (
       <section
-        aria-label="Guiones"
+        aria-label="Guiones y escenas"
         className="flex h-full flex-col items-center gap-2 overflow-hidden"
       >
+        <div
+          role="tablist"
+          aria-label="Guiones y escenas"
+          className="flex flex-col gap-1"
+        >
+          <Button
+            role="tab"
+            aria-selected={tab === 'scripts'}
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setTab('scripts')}
+            aria-label="Guiones"
+            title="Guiones"
+            className={tab === 'scripts' ? 'bg-accent' : undefined}
+          >
+            <Files aria-hidden="true" />
+          </Button>
+          <Button
+            role="tab"
+            aria-selected={tab === 'scenes'}
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setTab('scenes')}
+            aria-label={`Escenas (${scenes.length})`}
+            title="Escenas"
+            className={tab === 'scenes' ? 'bg-accent' : undefined}
+          >
+            <Clapperboard aria-hidden="true" />
+          </Button>
+        </div>
+        <Separator orientation="horizontal" className="w-6" />
         <Button
           variant="ghost"
           size="icon-sm"
@@ -141,235 +194,278 @@ export function ScriptsSidebar({
 
   return (
     <section
-      aria-label="Guiones"
+      aria-label="Guiones y escenas"
       className="flex h-full flex-col gap-2 overflow-hidden"
     >
-      <div className="flex items-center gap-2">
-        <h2 className="text-[0.6875rem] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
+      <div role="tablist" aria-label="Guiones y escenas" className="flex gap-1">
+        <Button
+          role="tab"
+          aria-selected={tab === 'scripts'}
+          size="sm"
+          variant={tab === 'scripts' ? 'secondary' : 'ghost'}
+          onClick={() => setTab('scripts')}
+          className="h-8 flex-1"
+        >
+          <Files aria-hidden="true" />
           Guiones
-          {scripts.length > 0
-            ? filtering
-              ? ` (${visible.length} de ${scripts.length})`
-              : ` (${scripts.length})`
-            : ''}
-        </h2>
-        <span className="ml-auto flex items-center gap-1">
-          <ImportButton variant="ghost" size="icon-sm" />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleCreate}
-            aria-label="Nuevo guion"
-          >
-            <Plus aria-hidden="true" />
-          </Button>
-        </span>
+        </Button>
+        <Button
+          role="tab"
+          aria-selected={tab === 'scenes'}
+          size="sm"
+          variant={tab === 'scenes' ? 'secondary' : 'ghost'}
+          onClick={() => setTab('scenes')}
+          className="h-8 flex-1"
+        >
+          <Clapperboard aria-hidden="true" />
+          Escenas
+          {scenes.length > 0 ? ` (${scenes.length})` : ''}
+        </Button>
       </div>
-
-      {scripts.length === 0 ? (
-        <p className="rounded-sm border border-border px-3 py-2 text-[0.8125rem] text-muted-foreground">
-          Sin guiones. Crea uno o importa un `.fountain`.
-        </p>
+      {tab === 'scenes' ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+          <h2 className="text-[0.6875rem] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
+            Escenas
+            {scenes.length > 0 ? ` (${scenes.length})` : ''}
+          </h2>
+          <ScenesList scenes={scenes} onJumpToScene={handleJumpToScene} />
+          <Separator />
+          <SettingsDialog variant="outline" size="sm" className="w-full" />
+        </div>
       ) : (
-        <>
-          <div role="search" className="relative">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              ref={inputRef}
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && query !== '') {
-                  e.stopPropagation()
-                  setQuery('')
-                }
-              }}
-              placeholder="Buscar guiones…"
-              aria-label="Buscar guiones por título"
-              maxLength={120}
-              className="pr-7 pl-7 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
-            />
-            {query !== '' && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={clearSearch}
-                aria-label="Limpiar búsqueda"
-                className="absolute top-1/2 right-0.5 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring"
-              >
-                <X aria-hidden="true" className="size-3.5" />
-              </button>
-            )}
-          </div>
-
-          {visible.length === 0 ? (
-            <div className="flex flex-col gap-2 rounded-sm border border-border px-3 py-2">
-              <p
-                aria-live="polite"
-                className="text-[0.8125rem] text-muted-foreground"
-              >
-                Sin resultados para “{query.trim()}”.
-              </p>
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[0.6875rem] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
+              Guiones
+              {scripts.length > 0
+                ? filtering
+                  ? ` (${visible.length} de ${scripts.length})`
+                  : ` (${scripts.length})`
+                : ''}
+            </h2>
+            <span className="ml-auto flex items-center gap-1">
+              <ImportButton variant="ghost" size="icon-sm" />
               <Button
                 variant="ghost"
-                size="sm"
-                onClick={() => setQuery('')}
-                className="self-start"
+                size="icon-sm"
+                onClick={handleCreate}
+                aria-label="Nuevo guion"
               >
-                Limpiar búsqueda
-              </Button>
-            </div>
-          ) : (
-            <ScrollArea className="min-h-0 flex-1">
-              <ul className="flex flex-col gap-1 pr-2">
-                {visible.map((s) => {
-                  const active = s.id === activeId
-                  return (
-                    <li key={s.id} className="flex items-stretch gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleSelect(s.id)}
-                        aria-current={active ? 'true' : undefined}
-                        aria-label={`Abrir guion ${s.title}`}
-                        className={`min-w-0 flex-1 rounded-sm border px-2 py-1.5 text-left outline-none transition-colors focus-visible:border-ring ${
-                          active
-                            ? 'border-border border-l-2 border-l-primary bg-accent'
-                            : 'border-transparent hover:bg-accent/60'
-                        }`}
-                      >
-                        <span className="block truncate text-[0.8125rem] font-medium">
-                          {s.title}
-                        </span>
-                        <span className="block font-mono text-[10px] text-muted-foreground tabular-nums">
-                          {formatDate(s.updatedAt)}
-                        </span>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={`Opciones del guion ${s.title}`}
-                          >
-                            <MoreHorizontal aria-hidden="true" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => openRename(s)}>
-                            <Pencil aria-hidden="true" />
-                            Renombrar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => exportScript(s)}>
-                            <Download aria-hidden="true" />
-                            Exportar .fountain
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() => setDeleteTarget(s)}
-                          >
-                            <Trash2 aria-hidden="true" />
-                            Borrar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </li>
-                  )
-                })}
-              </ul>
-            </ScrollArea>
-          )}
-        </>
-      )}
-
-      <Separator />
-      <SettingsDialog variant="outline" size="sm" className="w-full" />
-
-      {/* Renombrar */}
-      <Dialog
-        open={renameTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setRenameTarget(null)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Renombrar guion</DialogTitle>
-            <DialogDescription>
-              El nombre también se usa para el archivo `.fountain` al exportar.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              commitRename()
-            }}
-            className="flex flex-col gap-4"
-          >
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              aria-label="Título del guion"
-              maxLength={120}
-              autoFocus
-            />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setRenameTarget(null)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={draft.trim() === ''}>
-                Guardar
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmar borrado (papelera 30 días, punto 12) */}
-      <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Mover a la papelera</DialogTitle>
-            <DialogDescription>
-              “{deleteTarget?.title}” se moverá a la papelera de este navegador
-              y se podrá recuperar durante 30 días.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:justify-between">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (deleteTarget) exportScript(deleteTarget)
-              }}
-            >
-              <Download aria-hidden="true" />
-              Exportar antes
-            </Button>
-            <span className="flex gap-2">
-              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-                Cancelar
-              </Button>
-              <Button variant="destructive" onClick={commitDelete}>
-                <Trash2 aria-hidden="true" />
-                Mover
+                <Plus aria-hidden="true" />
               </Button>
             </span>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+
+          {scripts.length === 0 ? (
+            <p className="rounded-sm border border-border px-3 py-2 text-[0.8125rem] text-muted-foreground">
+              Sin guiones. Crea uno o importa un `.fountain`.
+            </p>
+          ) : (
+            <>
+              <div role="search" className="relative">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  ref={inputRef}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape' && query !== '') {
+                      e.stopPropagation()
+                      setQuery('')
+                    }
+                  }}
+                  placeholder="Buscar guiones…"
+                  aria-label="Buscar guiones por título"
+                  maxLength={120}
+                  className="pr-7 pl-7 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+                />
+                {query !== '' && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={clearSearch}
+                    aria-label="Limpiar búsqueda"
+                    className="absolute top-1/2 right-0.5 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring"
+                  >
+                    <X aria-hidden="true" className="size-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {visible.length === 0 ? (
+                <div className="flex flex-col gap-2 rounded-sm border border-border px-3 py-2">
+                  <p
+                    aria-live="polite"
+                    className="text-[0.8125rem] text-muted-foreground"
+                  >
+                    Sin resultados para “{query.trim()}”.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setQuery('')}
+                    className="self-start"
+                  >
+                    Limpiar búsqueda
+                  </Button>
+                </div>
+              ) : (
+                <ScrollArea className="min-h-0 flex-1">
+                  {/* pr-4: la barra vertical (w-2.5 superpuesta) no pisa el texto. */}
+                  <ul className="flex flex-col gap-1 pr-4">
+                    {visible.map((s) => {
+                      const active = s.id === activeId
+                      return (
+                        <li key={s.id} className="flex items-stretch gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSelect(s.id)}
+                            aria-current={active ? 'true' : undefined}
+                            aria-label={`Abrir guion ${s.title}`}
+                            className={`min-w-0 flex-1 rounded-sm border px-2 py-1.5 text-left outline-none transition-colors focus-visible:border-ring ${
+                              active
+                                ? 'border-border border-l-2 border-l-primary bg-accent'
+                                : 'border-transparent hover:bg-accent/60'
+                            }`}
+                          >
+                            <span className="block truncate text-[0.8125rem] font-medium">
+                              {s.title}
+                            </span>
+                            <span className="block font-mono text-[10px] text-muted-foreground tabular-nums">
+                              {formatDate(s.updatedAt)}
+                            </span>
+                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`Opciones del guion ${s.title}`}
+                              >
+                                <MoreHorizontal aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => openRename(s)}>
+                                <Pencil aria-hidden="true" />
+                                Renombrar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => exportScript(s)}
+                              >
+                                <Download aria-hidden="true" />
+                                Exportar .fountain
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => setDeleteTarget(s)}
+                              >
+                                <Trash2 aria-hidden="true" />
+                                Borrar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </ScrollArea>
+              )}
+            </>
+          )}
+
+          <Separator />
+          <SettingsDialog variant="outline" size="sm" className="w-full" />
+
+          {/* Renombrar */}
+          <Dialog
+            open={renameTarget !== null}
+            onOpenChange={(open) => {
+              if (!open) setRenameTarget(null)
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Renombrar guion</DialogTitle>
+                <DialogDescription>
+                  El nombre también se usa para el archivo `.fountain` al
+                  exportar.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  commitRename()
+                }}
+                className="flex flex-col gap-4"
+              >
+                <Input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  aria-label="Título del guion"
+                  maxLength={120}
+                  autoFocus
+                />
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setRenameTarget(null)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={draft.trim() === ''}>
+                    Guardar
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Confirmar borrado (papelera 30 días, punto 12) */}
+          <Dialog
+            open={deleteTarget !== null}
+            onOpenChange={(open) => {
+              if (!open) setDeleteTarget(null)
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Mover a la papelera</DialogTitle>
+                <DialogDescription>
+                  “{deleteTarget?.title}” se moverá a la papelera de este
+                  navegador y se podrá recuperar durante 30 días.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:justify-between">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (deleteTarget) exportScript(deleteTarget)
+                  }}
+                >
+                  <Download aria-hidden="true" />
+                  Exportar antes
+                </Button>
+                <span className="flex gap-2">
+                  <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                    Cancelar
+                  </Button>
+                  <Button variant="destructive" onClick={commitDelete}>
+                    <Trash2 aria-hidden="true" />
+                    Mover
+                  </Button>
+                </span>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
     </section>
   )
 }

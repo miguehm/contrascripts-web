@@ -5,9 +5,11 @@ import {
   DEFAULT_ZOOM,
   UI_KEY,
   loadFitWidth,
+  loadSidebarTab,
   loadUi,
   loadZoom,
   saveFitWidth,
+  saveSidebarTab,
   saveUi,
   saveZoom,
 } from '@/store/uiStorage'
@@ -150,5 +152,40 @@ describe('fitWidth (REVIEW.md punto 1)', () => {
     expect(loadFitWidth()).toBeNull()
     vi.stubGlobal('localStorage', mockStorage({ [UI_KEY]: '{no-json' }))
     expect(loadFitWidth()).toBeNull()
+  })
+})
+
+describe('sidebarTab (REVIEW.md punto 13)', () => {
+  it('sin dato, prefs viejas o valor inválido → scripts', () => {
+    vi.stubGlobal('localStorage', mockStorage())
+    expect(loadSidebarTab()).toBe('scripts')
+    vi.stubGlobal(
+      'localStorage',
+      mockStorage({ [UI_KEY]: JSON.stringify({ collapsed: true }) }),
+    )
+    expect(loadSidebarTab()).toBe('scripts')
+    vi.stubGlobal(
+      'localStorage',
+      mockStorage({
+        [UI_KEY]: JSON.stringify({ collapsed: false, sidebarTab: 'x' }),
+      }),
+    )
+    expect(loadSidebarTab()).toBe('scripts')
+    vi.stubGlobal('localStorage', mockStorage({ [UI_KEY]: '{no-json' }))
+    expect(loadSidebarTab()).toBe('scripts')
+  })
+
+  it('persiste sin pisar el resto (read-modify-write)', () => {
+    const storage = mockStorage({
+      [UI_KEY]: JSON.stringify({ collapsed: true, zoom: 1.25 }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    saveSidebarTab('scenes')
+    expect(loadSidebarTab()).toBe('scenes')
+    expect(loadUi()).toEqual({
+      collapsed: true,
+      zoom: 1.25,
+      sidebarTab: 'scenes',
+    })
   })
 })
