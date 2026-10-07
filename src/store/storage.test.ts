@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Script } from '@/types/Script'
 import {
   CORRUPT_PREFIX,
+  LEGACY_CORRUPT_PREFIX,
+  LEGACY_SCRIPTS_KEY,
   SCRIPTS_KEY,
   loadScripts,
   loadScriptsDetailed,
@@ -158,5 +160,26 @@ describe('saveScripts', () => {
       quotaExceeded: false,
       verifyFailed: false,
     })
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({
+      [LEGACY_SCRIPTS_KEY]: JSON.stringify([script()]),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadScripts()).toHaveLength(1)
+    expect(JSON.parse(storage.store[SCRIPTS_KEY])).toHaveLength(1)
+    expect(LEGACY_SCRIPTS_KEY in storage.store).toBe(false)
+  })
+
+  it('las entradas nuevas de cuarentena usan el prefijo nuevo', () => {
+    const storage = mockStorage({
+      [`${LEGACY_CORRUPT_PREFIX}abc`]: '{no-json',
+    })
+    vi.stubGlobal('localStorage', storage)
+    // El mock no implementa length/key: no hay dedup y se guarda igual.
+    expect(quarantineCorrupt('{otro-daño}')).toContain(CORRUPT_PREFIX)
   })
 })

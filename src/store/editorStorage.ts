@@ -7,7 +7,12 @@
 // tamaño de fuente). Un dato corrupto o ausente cae a los defaults sin
 // tumbar el boot. Nunca lanza.
 
-export const EDITOR_KEY = 'guion.editor.v1'
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
+
+export const EDITOR_KEY = 'contrascripts.editor.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_EDITOR_KEY = 'guion.editor.v1'
 
 /** Escalones de tamaño de fuente del editor (px). */
 export const FONT_SIZE_STEPS = [14, 16, 18, 20]
@@ -81,7 +86,7 @@ function isEditorPrefs(value: unknown): value is EditorPrefsData {
  * sin descartar el otro. */
 export function loadEditorPrefs(): EditorPrefsData {
   try {
-    const raw = globalThis.localStorage?.getItem(EDITOR_KEY)
+    const raw = readMigratedKey(EDITOR_KEY, LEGACY_EDITOR_KEY)
     if (raw == null || raw === '') return { ...DEFAULTS }
     const parsed: unknown = JSON.parse(raw)
     if (!isEditorPrefs(parsed)) return { ...DEFAULTS }
@@ -105,6 +110,7 @@ export function loadEditorPrefs(): EditorPrefsData {
 export function saveEditorPrefs(prefs: EditorPrefsData): void {
   try {
     globalThis.localStorage?.setItem(EDITOR_KEY, JSON.stringify(prefs))
+    dropLegacyKey(LEGACY_EDITOR_KEY)
   } catch {
     // Intencionadamente silencioso: es preferencia cosmética.
   }

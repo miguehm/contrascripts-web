@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ACTIVE_ID_KEY,
+  LEGACY_ACTIVE_ID_KEY,
   loadActiveId,
   saveActiveId,
 } from '@/store/activeScriptStorage'
@@ -79,5 +80,15 @@ describe('saveActiveId', () => {
     })
     vi.stubGlobal('localStorage', storage)
     expect(() => saveActiveId('s1')).not.toThrow()
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({ [LEGACY_ACTIVE_ID_KEY]: '"s9"' })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadActiveId()).toBe('s9')
+    expect(storage.store[ACTIVE_ID_KEY]).toBe('"s9"')
+    expect(LEGACY_ACTIVE_ID_KEY in storage.store).toBe(false)
   })
 })

@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  LEGACY_WARNINGS_KEY,
   WARNINGS_KEY,
   loadWarningsOpen,
   saveWarningsOpen,
@@ -69,5 +70,17 @@ describe('saveWarningsOpen', () => {
     })
     vi.stubGlobal('localStorage', storage)
     expect(() => saveWarningsOpen(false)).not.toThrow()
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({
+      [LEGACY_WARNINGS_KEY]: JSON.stringify({ open: true }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadWarningsOpen()).toBe(true)
+    expect(storage.store[WARNINGS_KEY]).toBe(JSON.stringify({ open: true }))
+    expect(LEGACY_WARNINGS_KEY in storage.store).toBe(false)
   })
 })

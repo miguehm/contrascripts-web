@@ -6,6 +6,7 @@ import {
   DEFAULT_LINE_HEIGHT,
   EDITOR_KEY,
   FONT_SIZE_STEPS,
+  LEGACY_EDITOR_KEY,
   LINE_HEIGHT_STEPS,
   clampFontSize,
   clampLineHeight,
@@ -120,5 +121,20 @@ describe('clamp/step', () => {
     expect(stepFontSize(15, 1)).toBe(16)
     expect(stepFontSize(20, 1)).toBe(20)
     expect(stepFontSize(14, -1)).toBe(14)
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({
+      [LEGACY_EDITOR_KEY]: JSON.stringify({ fontSize: 18, lineHeight: 1.9 }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadEditorPrefs()).toEqual({ fontSize: 18, lineHeight: 1.9 })
+    expect(JSON.parse(storage.store[EDITOR_KEY])).toEqual({
+      fontSize: 18,
+      lineHeight: 1.9,
+    })
+    expect(LEGACY_EDITOR_KEY in storage.store).toBe(false)
   })
 })

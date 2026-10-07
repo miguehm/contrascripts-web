@@ -7,9 +7,13 @@
 // guardada del usuario prevalece siempre) sin tumbar el boot.
 
 import type { Theme } from '@/types/Theme'
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
 
 /** Clave del tema activo (fijada por el plan §8). */
-export const THEME_KEY = 'guion.theme.v1'
+export const THEME_KEY = 'contrascripts.theme.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_THEME_KEY = 'guion.theme.v1'
 
 /** Tema por defecto (sigue al sistema operativo). */
 export const DEFAULT_THEME: Theme = 'system'
@@ -22,7 +26,7 @@ function isTheme(value: unknown): value is Theme {
  * inesperado, devuelve `system`. */
 export function loadTheme(): Theme {
   try {
-    const raw = globalThis.localStorage?.getItem(THEME_KEY)
+    const raw = readMigratedKey(THEME_KEY, LEGACY_THEME_KEY)
     if (raw == null || raw === '') return DEFAULT_THEME
     const parsed: unknown = JSON.parse(raw)
     return isTheme(parsed) ? parsed : DEFAULT_THEME
@@ -36,6 +40,7 @@ export function loadTheme(): Theme {
 export function saveTheme(theme: Theme): void {
   try {
     globalThis.localStorage?.setItem(THEME_KEY, JSON.stringify(theme))
+    dropLegacyKey(LEGACY_THEME_KEY)
   } catch {
     // Intencionadamente silencioso: el tema es cosmético.
   }

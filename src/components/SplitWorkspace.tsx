@@ -2,7 +2,7 @@
 //
 // Extraído de `App` para que el `ResizablePanelGroup` remonte limpio al
 // volver de la vista en grande: el `defaultLayout` se lee del store al
-// montar (sesión y recargas vía `guion.split.v1`), así el divisor
+// montar (sesión y recargas vía `contrascripts.split.v1`), así el divisor
 // personalizado sobrevive a expandir/colapsar. Sin esto remontaba a 50/50
 // y con otro ancho cambiaba el wrapping → la posición del editor derivaba
 // (REVIEW.md 6).

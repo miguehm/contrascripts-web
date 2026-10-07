@@ -1,7 +1,12 @@
 // src/store/trashStorage.test.ts — papelera punto 12 con localStorage mockeado.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { TRASH_KEY, loadTrash, saveTrash } from '@/store/trashStorage'
+import {
+  LEGACY_TRASH_KEY,
+  TRASH_KEY,
+  loadTrash,
+  saveTrash,
+} from '@/store/trashStorage'
 
 function mockStorage(initial: Record<string, string> = {}) {
   const store: Record<string, string> = { ...initial }
@@ -65,5 +70,23 @@ describe('saveTrash', () => {
         },
       ]),
     ).not.toThrow()
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const trashed = [
+      {
+        script: { id: 's1', title: 'T', text: 'x', updatedAt: 1 },
+        deletedAt: 2,
+      },
+    ]
+    const storage = mockStorage({
+      [LEGACY_TRASH_KEY]: JSON.stringify(trashed),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadTrash()).toEqual(trashed)
+    expect(JSON.parse(storage.store[TRASH_KEY])).toEqual(trashed)
+    expect(LEGACY_TRASH_KEY in storage.store).toBe(false)
   })
 })

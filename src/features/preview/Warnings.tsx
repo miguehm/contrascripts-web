@@ -8,7 +8,7 @@
 // del panel es un botón que salta a su línea (REVIEW.md punto 7) y cierra la
 // hoja para revelar el editor.
 // Estado controlado por el padre (`App` → `useWarningsOpen`): persiste en
-// `guion.warnings.v1`.
+// `contrascripts.warnings.v1`.
 
 import { useEffect, useRef } from 'react'
 import { ChevronDown } from 'lucide-react'

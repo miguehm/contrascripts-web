@@ -10,9 +10,13 @@
 //   escrituras no verificadas (`verifyFailed`).
 
 import type { Script } from '@/types/Script'
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
 
 /** Clave de la lista de guiones (fijada por el plan §6). */
-export const SCRIPTS_KEY = 'guion.scripts.v1'
+export const SCRIPTS_KEY = 'contrascripts.scripts.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_SCRIPTS_KEY = 'guion.scripts.v1'
 
 function isScript(value: unknown): value is Script {
   if (typeof value !== 'object' || value === null) return false
@@ -28,7 +32,10 @@ function isScript(value: unknown): value is Script {
 }
 
 /** Prefijo de las claves de cuarentena (un dato corrupto nunca se borra). */
-export const CORRUPT_PREFIX = 'guion.scripts.corrupt.'
+export const CORRUPT_PREFIX = 'contrascripts.scripts.corrupt.'
+
+/** Prefijo anterior (renombre de marca): se sigue deduplicando en lectura. */
+export const LEGACY_CORRUPT_PREFIX = 'guion.scripts.corrupt.'
 
 /** Resultado detallado de la lectura: distingue vacío real de dato dañado. */
 export interface LoadResult {
@@ -90,7 +97,7 @@ export function migrateScripts(parsed: unknown): {
  */
 export function loadScriptsDetailed(): LoadResult {
   try {
-    const raw = globalThis.localStorage?.getItem(SCRIPTS_KEY)
+    const raw = readMigratedKey(SCRIPTS_KEY, LEGACY_SCRIPTS_KEY)
     if (raw == null || raw === '')
       return { scripts: [], corruptRaw: null, dropped: 0 }
     let parsed: unknown
@@ -118,7 +125,7 @@ export function loadScripts(): Script[] {
 }
 
 /**
- * Guarda el texto crudo dañado en cuarentena (`guion.scripts.corrupt.*`).
+ * Guarda el texto crudo dañado en cuarentena (`contrascripts.scripts.corrupt.*`).
  * Idempotente: si el mismo texto ya está en cuarentena no duplica (el
  * StrictMode monta dos veces en dev y cada boot re-ejecutaría el init).
  * Nunca lanza ni borra nada; devuelve la clave usada o `null`.
@@ -141,7 +148,11 @@ export function quarantineCorrupt(raw: string): string | null {
         const getItem = storage.getItem as (key: string) => string | null
         for (let i = 0; i < storage.length; i++) {
           const k = keyFn.call(ls, i)
-          if (k?.startsWith(CORRUPT_PREFIX) && getItem.call(ls, k) === raw) {
+          if (
+            (k?.startsWith(CORRUPT_PREFIX) ||
+              k?.startsWith(LEGACY_CORRUPT_PREFIX)) &&
+            getItem.call(ls, k) === raw
+          ) {
             return k
           }
         }
@@ -203,6 +214,7 @@ export function saveScripts(scripts: Script[]): SaveResult {
   try {
     const expected = JSON.stringify(scripts)
     globalThis.localStorage?.setItem(SCRIPTS_KEY, expected)
+    dropLegacyKey(LEGACY_SCRIPTS_KEY)
     try {
       const actual = globalThis.localStorage?.getItem(SCRIPTS_KEY)
       if (actual !== undefined && actual !== null && actual !== expected) {

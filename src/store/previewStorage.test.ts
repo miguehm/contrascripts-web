@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  LEGACY_PREVIEW_KEY,
   PREVIEW_KEY,
   loadPreviewExpanded,
   loadPreviewOpen,
@@ -139,5 +140,21 @@ describe('savePreviewExpanded', () => {
     })
     vi.stubGlobal('localStorage', storage)
     expect(() => savePreviewExpanded(true)).not.toThrow()
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({
+      [LEGACY_PREVIEW_KEY]: JSON.stringify({ open: false, expanded: true }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadPreviewOpen()).toBe(false)
+    expect(loadPreviewExpanded()).toBe(true)
+    expect(JSON.parse(storage.store[PREVIEW_KEY])).toEqual({
+      open: false,
+      expanded: true,
+    })
+    expect(LEGACY_PREVIEW_KEY in storage.store).toBe(false)
   })
 })

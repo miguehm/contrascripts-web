@@ -7,9 +7,13 @@
 // aviso de cuota ya lo da la lista principal).
 
 import type { Script } from '@/types/Script'
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
 
 /** Clave de la papelera. */
-export const TRASH_KEY = 'guion.trash.v1'
+export const TRASH_KEY = 'contrascripts.trash.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_TRASH_KEY = 'guion.trash.v1'
 
 /** Retención de la papelera: 30 días. */
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
@@ -39,7 +43,7 @@ function isTrashed(value: unknown): value is TrashedScript {
 /** Lee la papelera. Nunca lanza: ausencia, JSON roto o forma inesperada → `[]`. */
 export function loadTrash(): TrashedScript[] {
   try {
-    const raw = globalThis.localStorage?.getItem(TRASH_KEY)
+    const raw = readMigratedKey(TRASH_KEY, LEGACY_TRASH_KEY)
     if (raw == null || raw === '') return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
@@ -53,6 +57,7 @@ export function loadTrash(): TrashedScript[] {
 export function saveTrash(trash: TrashedScript[]): void {
   try {
     globalThis.localStorage?.setItem(TRASH_KEY, JSON.stringify(trash))
+    dropLegacyKey(LEGACY_TRASH_KEY)
   } catch {
     // Intencionadamente silencioso.
   }

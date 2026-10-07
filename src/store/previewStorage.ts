@@ -7,7 +7,12 @@
 // `null` en `loadPreviewOpen` para que el hook decida el default por
 // layout (abierto en desktop, cerrado en móvil); nunca lanza.
 
-export const PREVIEW_KEY = 'guion.preview.v1'
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
+
+export const PREVIEW_KEY = 'contrascripts.preview.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_PREVIEW_KEY = 'guion.preview.v1'
 
 export interface PreviewPrefs {
   open: boolean
@@ -27,7 +32,7 @@ function isPreviewPrefs(value: unknown): value is PreviewPrefs {
 /** Lee la preferencia. `null` = sin dato (el hook aplica default por layout). */
 export function loadPreviewOpen(): boolean | null {
   try {
-    const raw = globalThis.localStorage?.getItem(PREVIEW_KEY)
+    const raw = readMigratedKey(PREVIEW_KEY, LEGACY_PREVIEW_KEY)
     if (raw == null || raw === '') return null
     const parsed: unknown = JSON.parse(raw)
     return isPreviewPrefs(parsed) ? parsed.open : null
@@ -40,7 +45,7 @@ export function loadPreviewOpen(): boolean | null {
  * forma inesperada o prefs viejas sin `expanded`. Nunca lanza. */
 export function loadPreviewExpanded(): boolean {
   try {
-    const raw = globalThis.localStorage?.getItem(PREVIEW_KEY)
+    const raw = readMigratedKey(PREVIEW_KEY, LEGACY_PREVIEW_KEY)
     if (raw == null || raw === '') return false
     const parsed: unknown = JSON.parse(raw)
     if (!isPreviewPrefs(parsed)) return false
@@ -55,7 +60,7 @@ export function loadPreviewExpanded(): boolean {
 export function savePreviewOpen(open: boolean, expanded?: boolean): void {
   try {
     let current: PreviewPrefs = { open }
-    const raw = globalThis.localStorage?.getItem(PREVIEW_KEY)
+    const raw = readMigratedKey(PREVIEW_KEY, LEGACY_PREVIEW_KEY)
     if (raw != null && raw !== '') {
       const parsed: unknown = JSON.parse(raw)
       if (isPreviewPrefs(parsed)) current = { ...parsed }
@@ -63,6 +68,7 @@ export function savePreviewOpen(open: boolean, expanded?: boolean): void {
     current.open = open
     if (typeof expanded === 'boolean') current.expanded = expanded
     globalThis.localStorage?.setItem(PREVIEW_KEY, JSON.stringify(current))
+    dropLegacyKey(LEGACY_PREVIEW_KEY)
   } catch {
     // Intencionadamente silencioso.
   }
@@ -72,7 +78,7 @@ export function savePreviewOpen(open: boolean, expanded?: boolean): void {
 export function savePreviewExpanded(expanded: boolean): void {
   try {
     let open: boolean | null = null
-    const raw = globalThis.localStorage?.getItem(PREVIEW_KEY)
+    const raw = readMigratedKey(PREVIEW_KEY, LEGACY_PREVIEW_KEY)
     if (raw != null && raw !== '') {
       const parsed: unknown = JSON.parse(raw)
       if (isPreviewPrefs(parsed)) open = parsed.open

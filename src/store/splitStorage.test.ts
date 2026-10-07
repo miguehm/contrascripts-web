@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  LEGACY_SPLIT_KEY,
   SPLIT_KEY,
   isSplitLayout,
   loadSplitLayout,
@@ -98,5 +99,20 @@ describe('loadSplitLayout/saveSplitLayout', () => {
   it('sin localStorage no lanza', () => {
     expect(() => saveSplitLayout({ editor: 60, preview: 40 })).not.toThrow()
     expect(loadSplitLayout()).toBeUndefined()
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({
+      [LEGACY_SPLIT_KEY]: JSON.stringify({ editor: 60, preview: 40 }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadSplitLayout()).toEqual({ editor: 60, preview: 40 })
+    expect(JSON.parse(storage.store[SPLIT_KEY])).toEqual({
+      editor: 60,
+      preview: 40,
+    })
+    expect(LEGACY_SPLIT_KEY in storage.store).toBe(false)
   })
 })

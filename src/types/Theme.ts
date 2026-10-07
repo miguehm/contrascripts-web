@@ -2,7 +2,7 @@
 //
 // Tres preferencias: `light` y `dark` (temas editoriales) más `system`, que
 // sigue a `prefers-color-scheme` del SO. Persistidas en localStorage
-// (`guion.theme.v1`); `system` es solo preferencia y nunca se aplica
+// (`contrascripts.theme.v1`); `system` es solo preferencia y nunca se aplica
 // directa: el hook la resuelve a `ResolvedTheme` antes de tocar `.dark`.
 
 /** Preferencia de tema guardable (incluye seguir al sistema). */

@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_ZOOM,
+  LEGACY_UI_KEY,
   UI_KEY,
   loadFitWidth,
   loadSidebarTab,
@@ -187,5 +188,20 @@ describe('sidebarTab (REVIEW.md punto 13)', () => {
       zoom: 1.25,
       sidebarTab: 'scenes',
     })
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({
+      [LEGACY_UI_KEY]: JSON.stringify({ collapsed: true, zoom: 1.5 }),
+    })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadUi()).toEqual({ collapsed: true, zoom: 1.5 })
+    expect(JSON.parse(storage.store[UI_KEY])).toEqual({
+      collapsed: true,
+      zoom: 1.5,
+    })
+    expect(LEGACY_UI_KEY in storage.store).toBe(false)
   })
 })

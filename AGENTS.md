@@ -29,7 +29,8 @@ necesita Go para `make dist` (o bundle cacheado). Se documenta en el workflow (�
 1. **Pinear versiones**: nada de `@latest` suelto salvo scaffold inicial;
    fijar `vite`, `react`, `react-dom` sin `^` tras el primer install.
 2. **Persistencia centralizada**: solo `store/` toca `localStorage`
-   (clave `guion.scripts.v1`, tema `guion.theme.v1`); componentes acceden vía hooks.
+   (clave `contrascripts.scripts.v1`, tema `contrascripts.theme.v1`,
+   legacy `guion.*.v1` migradas en lectura); componentes acceden vía hooks.
 3. **`src/vendor/` es artefacto**: nunca editar a mano; regenerar con `npm run sync`.
 4. **`base: './fountain'`** relativo desde §4; no usar `'/fountain'`.
 5. **Commits**: convención `feat:`, `fix:`, `chore:`...

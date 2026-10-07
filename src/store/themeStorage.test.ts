@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_THEME,
+  LEGACY_THEME_KEY,
   THEME_KEY,
   loadTheme,
   saveTheme,
@@ -71,5 +72,15 @@ describe('saveTheme', () => {
     })
     vi.stubGlobal('localStorage', storage)
     expect(() => saveTheme('dark')).not.toThrow()
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({ [LEGACY_THEME_KEY]: '"dark"' })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadTheme()).toBe('dark')
+    expect(storage.store[THEME_KEY]).toBe('"dark"')
+    expect(LEGACY_THEME_KEY in storage.store).toBe(false)
   })
 })

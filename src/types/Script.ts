@@ -1,7 +1,7 @@
 // src/types/Script.ts — modelo de persistencia multi-guion (§6 del PLAN.md).
 //
 // Un guion es `{ id, title, text, updatedAt }`. La lista completa vive en
-// localStorage bajo `guion.scripts.v1` y solo `store/` la lee/escribe;
+// localStorage bajo `contrascripts.scripts.v1` y solo `store/` la lee/escribe;
 // los componentes acceden vía `useScripts()`.
 
 /** Un guion Fountain editable. */

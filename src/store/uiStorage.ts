@@ -7,8 +7,12 @@
 // móvil (punto 1) y la pestaña activa del sidebar (punto 13).
 // El drawer móvil es efímero y nunca se persiste.
 // Un dato corrupto o ausente cae a los defaults sin tumbar el boot.
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
 
-export const UI_KEY = 'guion.ui.v1'
+export const UI_KEY = 'contrascripts.ui.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_UI_KEY = 'guion.ui.v1'
 
 /** Escala por defecto del preview (100%). */
 export const DEFAULT_ZOOM = 1
@@ -58,7 +62,7 @@ function isValidSidebarTab(value: unknown): value is SidebarTab {
  * inválido se omite (compat con prefs viejas: el hook decide por layout). */
 export function loadUi(): UiPrefs {
   try {
-    const raw = globalThis.localStorage?.getItem(UI_KEY)
+    const raw = readMigratedKey(UI_KEY, LEGACY_UI_KEY)
     if (raw == null || raw === '') return { ...DEFAULTS }
     const parsed: unknown = JSON.parse(raw)
     if (!isUiPrefs(parsed)) return { ...DEFAULTS }
@@ -95,7 +99,7 @@ export function saveZoom(zoom: number): void {
  * Nunca lanza. */
 export function loadFitWidth(): boolean | null {
   try {
-    const raw = globalThis.localStorage?.getItem(UI_KEY)
+    const raw = readMigratedKey(UI_KEY, LEGACY_UI_KEY)
     if (raw == null || raw === '') return null
     const parsed: unknown = JSON.parse(raw)
     if (!isUiPrefs(parsed)) return null
@@ -120,7 +124,7 @@ export function saveFitWidth(fitWidth: boolean): void {
  * Nunca lanza. */
 export function loadSidebarTab(): SidebarTab {
   try {
-    const raw = globalThis.localStorage?.getItem(UI_KEY)
+    const raw = readMigratedKey(UI_KEY, LEGACY_UI_KEY)
     if (raw == null || raw === '') return 'scripts'
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return 'scripts'
@@ -146,6 +150,7 @@ export function saveSidebarTab(tab: SidebarTab): void {
 export function saveUi(prefs: UiPrefs): void {
   try {
     globalThis.localStorage?.setItem(UI_KEY, JSON.stringify(prefs))
+    dropLegacyKey(LEGACY_UI_KEY)
   } catch {
     // Intencionadamente silencioso: es preferencia cosmética.
   }

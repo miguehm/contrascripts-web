@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   LAST_BACKUP_KEY,
+  LEGACY_LAST_BACKUP_KEY,
   loadLastBackup,
   saveLastBackup,
 } from '@/store/backupStorage'
@@ -51,5 +52,15 @@ describe('backupStorage', () => {
     vi.stubGlobal('localStorage', storage)
     expect(() => saveLastBackup(1)).not.toThrow()
     expect(loadLastBackup()).toBe(null)
+  })
+})
+
+describe('migración legacy guion.* → contrascripts.*', () => {
+  it('lee la clave vieja, la copia a la nueva y la borra', () => {
+    const storage = mockStorage({ [LEGACY_LAST_BACKUP_KEY]: '123' })
+    vi.stubGlobal('localStorage', storage)
+    expect(loadLastBackup()).toBe(123)
+    expect(storage.store[LAST_BACKUP_KEY]).toBe('123')
+    expect(LEGACY_LAST_BACKUP_KEY in storage.store).toBe(false)
   })
 })

@@ -4,12 +4,17 @@
 // (REVIEW.md 6): al entrar en la vista en grande el `ResizablePanelGroup`
 // se desmonta, y sin esto al volver remontaba a 50/50 perdiendo el divisor
 // del usuario (y con otro ancho cambia el wrapping → la posición del
-// editor ya no cuadra). Clave `guion.split.v1`, porcentajes 0..100 por id
+import { dropLegacyKey, readMigratedKey } from '@/store/keyMigration'
+
+// editor ya no cuadra). Clave `contrascripts.split.v1`, porcentajes 0..100 por id
 // de panel (`editor`/`preview`, los que `SplitWorkspace` declara).
 // Un dato corrupto o ausente devuelve `undefined` (50/50 por defecto).
 // Nunca lanza.
 
-export const SPLIT_KEY = 'guion.split.v1'
+export const SPLIT_KEY = 'contrascripts.split.v1'
+
+/** Clave anterior (renombre de marca): se migra en lectura. */
+export const LEGACY_SPLIT_KEY = 'guion.split.v1'
 
 export const SPLIT_PANEL_IDS = ['editor', 'preview'] as const
 
@@ -51,7 +56,7 @@ export function splitLayoutFromGroup(
 /** Lee el layout guardado. `undefined` = sin dato (50/50 por defecto). */
 export function loadSplitLayout(): SplitLayout | undefined {
   try {
-    const raw = globalThis.localStorage?.getItem(SPLIT_KEY)
+    const raw = readMigratedKey(SPLIT_KEY, LEGACY_SPLIT_KEY)
     if (raw == null || raw === '') return undefined
     const parsed: unknown = JSON.parse(raw)
     return isSplitLayout(parsed) ? parsed : undefined
@@ -65,6 +70,7 @@ export function saveSplitLayout(layout: SplitLayout): void {
   try {
     if (!isSplitLayout(layout)) return
     globalThis.localStorage?.setItem(SPLIT_KEY, JSON.stringify(layout))
+    dropLegacyKey(LEGACY_SPLIT_KEY)
   } catch {
     // Intencionadamente silencioso: es preferencia cosmética.
   }
