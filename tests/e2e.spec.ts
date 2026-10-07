@@ -213,6 +213,32 @@ test('ambos plegados: el editor hace scroll interno y el header queda fijo', asy
   expect(innerScroll.scrollHeight).toBeGreaterThan(innerScroll.clientHeight)
 })
 
+// REVIEW.md 14: plegado sin pestañas Guiones/Escenas — solo acciones.
+test('sidebar plegado: oculta las pestañas Guiones y Escenas', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  const sidebar = page.locator('#scripts-sidebar')
+  await expect(sidebar).toBeVisible()
+  // Estado base: expandido muestra las dos pestañas.
+  const expandSidebar = page.getByRole('button', { name: 'Expandir guiones' })
+  if (await expandSidebar.isVisible()) await expandSidebar.click()
+  await expect(sidebar.getByRole('tab', { name: 'Guiones' })).toBeVisible()
+  // Al plegar desaparecen las tabs, pero siguen Nuevo/Importar/Ajustes.
+  await page.getByRole('button', { name: 'Colapsar guiones' }).click()
+  await expect(sidebar.getByRole('tab')).toHaveCount(0)
+  await expect(
+    sidebar.getByRole('button', { name: 'Nuevo guion' }),
+  ).toBeVisible()
+  // Al expandir vuelven las pestañas.
+  await page.getByRole('button', { name: 'Expandir guiones' }).click()
+  await expect(sidebar.getByRole('tab', { name: 'Guiones' })).toBeVisible()
+  await expect(sidebar.getByRole('tab', { name: /Escenas/ })).toBeVisible()
+})
+
 test('vista en grande: amplía a todo el ancho, persiste y sale', async ({
   page,
 }) => {
