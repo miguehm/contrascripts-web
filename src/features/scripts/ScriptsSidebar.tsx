@@ -140,43 +140,13 @@ export function ScriptsSidebar({
   }
 
   if (collapsed) {
-    // Rail tipo VS Code: iconos de pestaña arriba, acciones debajo.
+    // REVIEW.md 14: plegado sin pestañas Guiones/Escenas — solo acciones.
+    // El cambio de pestaña exige expandir primero (vía header Ctrl+B).
     return (
       <section
-        aria-label="Guiones y escenas"
+        aria-label="Acciones de guion"
         className="flex h-full flex-col items-center gap-2 overflow-hidden"
       >
-        <div
-          role="tablist"
-          aria-label="Guiones y escenas"
-          className="flex flex-col gap-1"
-        >
-          <Button
-            role="tab"
-            aria-selected={tab === 'scripts'}
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setTab('scripts')}
-            aria-label="Guiones"
-            title="Guiones"
-            className={tab === 'scripts' ? 'bg-accent' : undefined}
-          >
-            <Files aria-hidden="true" />
-          </Button>
-          <Button
-            role="tab"
-            aria-selected={tab === 'scenes'}
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setTab('scenes')}
-            aria-label={`Escenas (${scenes.length})`}
-            title="Escenas"
-            className={tab === 'scenes' ? 'bg-accent' : undefined}
-          >
-            <Clapperboard aria-hidden="true" />
-          </Button>
-        </div>
-        <Separator orientation="horizontal" className="w-6" />
         <Button
           variant="ghost"
           size="icon-sm"
