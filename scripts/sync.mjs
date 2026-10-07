@@ -56,9 +56,12 @@ async function main() {
   // `dist` es .PHONY en el Makefile (siempre reconstruye) y su `cp` del
   // `wasm_exec.js` de GOROOT preserva el modo solo-lectura del origen: sin
   // esto, un segundo `sync` en el mismo workspace (p.ej. el encadenado en
-  // `npm run build`/`dev`) falla con EACCES al sobrescribirlo. Best-effort:
-  // si `chmod` no existe o `dist/` aún no existe, se ignora y `make` decide.
+  // `npm run build`/`dev`) falla con EACCES al sobrescribirlo, tanto en el
+  // `dist/` del parser (target `dist`) como en el destino de este repo
+  // (target `package`, que copia a `public/fountain/` preservando el 444).
+  // Best-effort: si `chmod` no existe, se ignora y `make` decide.
   await execFileAsync('chmod', ['-R', 'u+w', DIST_DIR]).catch(() => {})
+  await execFileAsync('chmod', ['-R', 'u+w', PUBLIC_DIR]).catch(() => {})
   await execFileAsync(
     'make',
     ['-C', PARSER_DIR, 'package', `DIR=${PUBLIC_DIR}`],
