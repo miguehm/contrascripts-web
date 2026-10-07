@@ -34,7 +34,7 @@ export function newScript(title?: string, text = ''): Script {
  * Sanea un título para usarlo como nombre de archivo.
  * Quita separadores (`/`, `\`, `:`), el resto de inseguros en Windows
  * (`<>?"*|`) y caracteres de control; colapsa espacios y recorta a 60
- * caracteres. Sin resultado útil → `guion`.
+ * caracteres. Sin resultado útil → `contrascripts`.
  */
 export function sanitizeFilename(title: string): string {
   const cleaned = [...title]
@@ -47,7 +47,7 @@ export function sanitizeFilename(title: string): string {
     .trim()
     .replace(/[. ]+$/g, '')
     .slice(0, 60)
-  return cleaned === '' ? 'guion' : cleaned
+  return cleaned === '' ? 'contrascripts' : cleaned
 }
 
 /** Deriva el título inicial al importar: nombre de archivo sin extensión. */

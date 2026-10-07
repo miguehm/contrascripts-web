@@ -18,14 +18,14 @@ describe('buildBackup / backupFilename', () => {
   it('payload versionado con fecha', () => {
     const b = buildBackup([script()], 1_700_000_000_000)
     expect(b.version).toBe(BACKUP_VERSION)
-    expect(b.app).toBe('guion')
+    expect(b.app).toBe('contrascripts')
     expect(b.exportedAt).toBe(1_700_000_000_000)
     expect(b.scripts).toHaveLength(1)
   })
 
-  it('nombre guiones-AAAA-MM-DD.json', () => {
+  it('nombre contrascripts-AAAA-MM-DD.json', () => {
     expect(backupFilename(new Date(2026, 9, 6, 12).getTime())).toBe(
-      'guiones-2026-10-06.json',
+      'contrascripts-2026-10-06.json',
     )
   })
 })
@@ -52,7 +52,7 @@ describe('parseBackup', () => {
 
   it('JSON roto → vacío sin lanzar', () => {
     expect(parseBackup('{no-json')).toEqual({ scripts: [], dropped: 0 })
-    expect(parseBackup(JSON.stringify({ app: 'guion' }))).toEqual({
+    expect(parseBackup(JSON.stringify({ app: 'contrascripts' }))).toEqual({
       scripts: [],
       dropped: 0,
     })

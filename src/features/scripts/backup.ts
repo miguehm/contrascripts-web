@@ -13,7 +13,7 @@ export const BACKUP_VERSION = 1
 
 export interface BackupPayload {
   version: number
-  app: 'guion'
+  app: 'contrascripts'
   exportedAt: number
   scripts: Script[]
 }
@@ -28,16 +28,21 @@ export function buildBackup(
   scripts: Script[],
   now: number = Date.now(),
 ): BackupPayload {
-  return { version: BACKUP_VERSION, app: 'guion', exportedAt: now, scripts }
+  return {
+    version: BACKUP_VERSION,
+    app: 'contrascripts',
+    exportedAt: now,
+    scripts,
+  }
 }
 
-/** Nombre de archivo `guiones-AAAA-MM-DD.json` (fecha local). */
+/** Nombre de archivo `contrascripts-AAAA-MM-DD.json` (fecha local). */
 export function backupFilename(at: number = Date.now()): string {
   const d = new Date(at)
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
-  return `guiones-${y}-${m}-${day}.json`
+  return `contrascripts-${y}-${m}-${day}.json`
 }
 
 /** Descarga la copia (web: Blob + `a[download]`). */

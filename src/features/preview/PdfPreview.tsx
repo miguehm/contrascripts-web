@@ -1071,7 +1071,7 @@ export function PdfPreview({
             <div
               ref={docWrapRef}
               role="document"
-              aria-label={`Guion en PDF, ${numPages} ${numPages === 1 ? 'página' : 'páginas'}`}
+              aria-label={`Contrascripts en PDF, ${numPages} ${numPages === 1 ? 'página' : 'páginas'}`}
               className="mx-auto flex w-max min-w-full max-w-none flex-col items-center gap-6"
               style={
                 gesture

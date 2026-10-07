@@ -100,7 +100,7 @@ describe('SettingsDialog', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('la sección Acerca de muestra versión, motor y licencia', async () => {
+  it('la sección Acerca de muestra versión, motor, licencia y privacidad', async () => {
     renderSettings()
     await openDialog()
     await act(async () => {
@@ -109,6 +109,7 @@ describe('SettingsDialog', () => {
     expect(screen.getByText(/fountain-parser/i)).toBeTruthy()
     expect(screen.getByText(/MIT/i)).toBeTruthy()
     expect(screen.getByText(/v\d+\.\d+\.\d+/)).toBeTruthy()
+    expect(screen.getByText(/nada se sube a ningún servidor/i)).toBeTruthy()
   })
 
   it('Sistema es el tema por defecto sin preferencia guardada', async () => {

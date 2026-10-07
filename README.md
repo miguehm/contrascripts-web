@@ -1,4 +1,4 @@
-# Guion — Editor de guiones Fountain (Vite/React + TS + WASM)
+# Contrascripts — Editor de guiones Fountain (Vite/React + TS + WASM)
 
 Editor web de guiones en formato Fountain. Frontend Vite + React + TypeScript
 que usa el parser Go compilado a WASM
@@ -33,7 +33,7 @@ bundleadas vía `@fontsource`, que ya satisfacen `font-src 'self'`):
 
 ```bash
 npm run build                              # sync + tsc -b + vite build → dist/
-npx wrangler pages deploy dist --project-name guion
+npx wrangler pages deploy dist --project-name contrascripts
 # o arrastra la carpeta dist/ en el dashboard de Pages
 ```
 

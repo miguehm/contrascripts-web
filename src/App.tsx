@@ -182,7 +182,7 @@ export default function App() {
   const previewScroll = usePreviewScroll()
   const editorPosition = useEditorPosition()
   // REVIEW.md 4 y 9: avisos como notas al pie — tira dockada + panel
-  // flotante. `open` persiste en `guion.warnings.v1` y se comparte con el
+  // flotante. `open` persiste en `contrascripts.warnings.v1` y se comparte con el
   // modal de Ajustes vía `PreferencesProvider`; ante avisos nuevos solo se
   // ilumina el badge (sin auto-apertura: taparía manuscrito).
   const { warningsOpen, setWarningsOpen } = usePreferences()
@@ -392,7 +392,7 @@ export default function App() {
   const booting = status !== 'ready'
   const pdfName = activeScript
     ? `${sanitizeFilename(activeScript.title)}.pdf`
-    : 'guion.pdf'
+    : 'contrascripts.pdf'
 
   const handleChange = (value: string) => {
     if (activeScript) updateText(activeScript.id, value)
@@ -443,7 +443,7 @@ export default function App() {
             aria-hidden="true"
             className="hidden shrink-0 text-[0.6875rem] font-semibold tracking-[0.06em] text-muted-foreground uppercase md:inline"
           >
-            Guion
+            Contrascripts
           </span>
           <span className="truncate text-[0.8125rem] font-medium">
             {activeScript?.title ?? 'Sin guiones'}

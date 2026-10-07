@@ -22,13 +22,17 @@ export function AboutContent() {
   return (
     <div className="flex flex-col gap-2 text-[0.8125rem] text-muted-foreground">
       <p className="text-[0.6875rem] font-semibold tracking-[0.06em] uppercase">
-        Guion
+        Contrascripts
       </p>
       <p>Editor de guiones Fountain (Vite/React + TS + WASM).</p>
       <p className="font-mono text-xs tabular-nums">v{version}</p>
       <p>
         Motor fountain-parser (Go/WASM) en Web Worker + raster con pdf.js: lo
         que ves es lo que se exporta.
+      </p>
+      <p>
+        Privacidad: nada se sube a ningún servidor. Todo —análisis, PDF y
+        guardado— se procesa en este navegador.
       </p>
       <p>
         Atajo:{' '}
@@ -48,7 +52,7 @@ export function AboutContent() {
       <p>
         Licencia MIT — ver{' '}
         <a
-          href="https://github.com/anomalyco/opencode"
+          href="https://github.com/miguehm/contrascripts-web"
           target="_blank"
           rel="noreferrer"
         >

@@ -4,14 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Guion — Editor Fountain</title>
+    <title>Contrascripts — Editor Fountain</title>
     <script>
       // §8: aplica .dark antes del primer pintado para evitar FOUC.
-      // Por defecto light (Warm); solo dark si guion.theme.v1 === "dark".
+      // Por defecto light (Warm); solo dark si contrascripts.theme.v1 === "dark"
+      // (con fallback a la clave anterior guion.theme.v1 tras el renombre).
       try {
         if (
-          JSON.parse(localStorage.getItem('guion.theme.v1') || 'null') ===
-          'dark'
+          JSON.parse(
+            localStorage.getItem('contrascripts.theme.v1') ||
+              localStorage.getItem('guion.theme.v1') ||
+              'null',
+          ) === 'dark'
         ) {
           document.documentElement.classList.add('dark')
         }

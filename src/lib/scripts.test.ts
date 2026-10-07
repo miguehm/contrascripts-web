@@ -47,10 +47,10 @@ describe('sanitizeFilename', () => {
     )
   })
 
-  it('recorta a 60 caracteres y cae a "guion" si queda vacío', () => {
+  it('recorta a 60 caracteres y cae a "contrascripts" si queda vacío', () => {
     expect(sanitizeFilename('x'.repeat(100))).toHaveLength(60)
-    expect(sanitizeFilename('///')).toBe('guion')
-    expect(sanitizeFilename('   ')).toBe('guion')
+    expect(sanitizeFilename('///')).toBe('contrascripts')
+    expect(sanitizeFilename('   ')).toBe('contrascripts')
   })
 })
 

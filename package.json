@@ -42,7 +42,7 @@
     "vite": "8.3.0",
     "vitest": "^4.1.11"
   },
-  "name": "guion",
+  "name": "contrascripts",
   "private": true,
   "scripts": {
     "build": "npm run sync && tsc -b && vite build",

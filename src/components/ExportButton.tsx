@@ -15,7 +15,7 @@ interface ExportButtonProps {
 
 export function ExportButton({
   bytes,
-  filename = 'guion.pdf',
+  filename = 'contrascripts.pdf',
 }: ExportButtonProps) {
   const [busy, setBusy] = useState(false)
 
