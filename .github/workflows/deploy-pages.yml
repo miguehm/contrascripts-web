@@ -39,13 +39,16 @@ jobs:
           path: app
 
       - name: Clonar parser (hermano del sync)
+        # Sin `/..`: con `checkout.path: app` el repo queda en
+        # `$GITHUB_WORKSPACE/app` y `sync.mjs` espera el parser en
+        # `<repo>/../2026-08-31-fountain-parser`, o sea `$GITHUB_WORKSPACE/…`.
         run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
-        working-directory: ${{ github.workspace }}/..
+        working-directory: ${{ github.workspace }}
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache-dependency-path: ../2026-08-31-fountain-parser/go.sum
+          cache-dependency-path: 2026-08-31-fountain-parser/go.sum
 
       - uses: actions/setup-node@v4
         with:
