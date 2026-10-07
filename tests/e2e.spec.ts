@@ -60,7 +60,7 @@ test('boot único + preview PDF del seed', async ({ page }) => {
   ).toBe(1)
   // El seed de ejemplo renderiza a 3 páginas (worker + pdf.js de punta a punta).
   await expect(
-    page.getByRole('document', { name: 'Guion en PDF, 3 páginas' }),
+    page.getByRole('document', { name: 'Contrascripts en PDF, 3 páginas' }),
   ).toBeVisible({ timeout: 30_000 })
   await expect(page.getByRole('img', { name: 'Página 1 de 3' })).toBeVisible({
     timeout: 30_000,
@@ -141,9 +141,9 @@ test('preview desplegable: ocultar persiste y reabre', async ({ page }) => {
     page.getByRole('button', { name: 'Mostrar vista previa' }),
   ).toBeVisible()
   await expect(
-    page.getByRole('document', { name: /Guion en PDF/ }),
+    page.getByRole('document', { name: /Contrascripts en PDF/ }),
   ).toBeHidden()
-  // El estado colapsado persiste tras recarga (clave guion.preview.v1).
+  // El estado colapsado persiste tras recarga (clave contrascripts.preview.v1).
   await page.reload()
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
     timeout: 30_000,
@@ -260,10 +260,10 @@ test('vista en grande: amplía a todo el ancho, persiste y sale', async ({
   // El editor se oculta; el documento sigue visible a todo el ancho.
   await expect(page.locator('.cm-content:visible')).toBeHidden()
   await expect(
-    page.getByRole('document', { name: /Guion en PDF/ }),
+    page.getByRole('document', { name: /Contrascripts en PDF/ }),
   ).toBeVisible()
   expect(await page.evaluate(() => window.scrollY)).toBe(0)
-  // Persiste tras recarga (clave guion.preview.v1 con expanded).
+  // Persiste tras recarga (clave contrascripts.preview.v1 con expanded).
   await page.reload()
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
     timeout: 30_000,
@@ -892,7 +892,7 @@ test('el divisor personalizado sobrevive a la vista en grande', async ({
     .toBe(true)
 })
 
-// REVIEW.md 6: el divisor persiste tras recarga (clave guion.split.v1).
+// REVIEW.md 6: el divisor persiste tras recarga (clave contrascripts.split.v1).
 test('el divisor persiste tras recarga', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
@@ -925,7 +925,7 @@ test('persistencia tras recarga', async ({ page }) => {
     .poll(
       async () =>
         page.evaluate(
-          (m) => localStorage.getItem('guion.scripts.v1')?.includes(m),
+          (m) => localStorage.getItem('contrascripts.scripts.v1')?.includes(m),
           marker,
         ),
       { timeout: 10_000 },
@@ -1005,7 +1005,8 @@ test('pestaña Escenas: lista, salto al editor y persiste tras recarga', async (
   // La pestaña activa se recuerda tras recarga.
   await expect
     .poll(
-      async () => page.evaluate(() => localStorage.getItem('guion.ui.v1')),
+      async () =>
+        page.evaluate(() => localStorage.getItem('contrascripts.ui.v1')),
       { timeout: 10_000 },
     )
     .toContain('scenes')

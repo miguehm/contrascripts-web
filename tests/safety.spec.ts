@@ -7,7 +7,7 @@ test('boot corrupto: cuarentena sin sembrar ejemplo encima', async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('guion.scripts.v1', '{no-json')
+    localStorage.setItem('contrascripts.scripts.v1', '{no-json')
   })
   await page.goto('/')
   await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
@@ -21,15 +21,61 @@ test('boot corrupto: cuarentena sin sembrar ejemplo encima', async ({
     const keys: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
-      if (k?.startsWith('guion.scripts.corrupt.')) keys.push(k)
+      if (k?.startsWith('contrascripts.scripts.corrupt.')) keys.push(k)
     }
     return keys.map((k) => localStorage.getItem(k))
   })
   expect(quarantine).toEqual(['{no-json'])
   const current = await page.evaluate(() =>
-    localStorage.getItem('guion.scripts.v1'),
+    localStorage.getItem('contrascripts.scripts.v1'),
   )
   expect(current).not.toContain('Brick')
+})
+
+test('migración legacy: claves guion.*.v1 se mudan a contrascripts.*.v1', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'guion.scripts.v1',
+      JSON.stringify([
+        {
+          id: 'legacy-1',
+          title: 'Legado',
+          text: 'INT. CASA - DÍA',
+          updatedAt: 1,
+        },
+      ]),
+    )
+    localStorage.setItem(
+      'guion.ui.v1',
+      JSON.stringify({ collapsed: false, zoom: 1 }),
+    )
+  })
+  await page.goto('/')
+  await expect(page.locator('[data-engine-status="ready"]')).toBeVisible({
+    timeout: 30_000,
+  })
+  // El guion legacy sigue ahí (punto 12: nada se pierde en el renombre).
+  await expect(
+    page.getByRole('button', { name: 'Abrir guion Legado' }),
+  ).toBeVisible()
+  const keys = await page.evaluate(() => {
+    const out: Record<string, string | null> = {}
+    for (const k of [
+      'contrascripts.scripts.v1',
+      'contrascripts.ui.v1',
+      'guion.scripts.v1',
+      'guion.ui.v1',
+    ]) {
+      out[k] = localStorage.getItem(k)
+    }
+    return out
+  })
+  expect(keys['contrascripts.scripts.v1']).toContain('Legado')
+  expect(keys['contrascripts.ui.v1']).toContain('collapsed')
+  expect(keys['guion.scripts.v1']).toBeNull()
+  expect(keys['guion.ui.v1']).toBeNull()
 })
 
 test('borrar mueve a papelera y Deshacer lo restaura tras recarga', async ({
@@ -139,5 +185,7 @@ test('ajustes: sección Copias exporta un .json válido', async ({ page }) => {
   const download = page.waitForEvent('download', { timeout: 30_000 })
   await page.getByRole('button', { name: 'Exportar copia (.json)' }).click()
   const dl = await download
-  expect(dl.suggestedFilename()).toMatch(/^guiones-\d{4}-\d{2}-\d{2}\.json$/)
+  expect(dl.suggestedFilename()).toMatch(
+    /^contrascripts-\d{4}-\d{2}-\d{2}\.json$/,
+  )
 })
