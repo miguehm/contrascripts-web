@@ -1,0 +1,99 @@
+name: deploy-pages
+
+# Deploy a Cloudflare Pages vía wrangler (§7 del PLAN.md).
+# - push a main / workflow_dispatch → build + deploy (crea el proyecto
+#   `contrascripts` en el primer deploy si no existe).
+# - pull_request → solo build (valida sync + compilación sin publicar).
+#
+# Requiere los secrets CLOUDFLARE_API_TOKEN (Account → Cloudflare Pages → Edit)
+# y CLOUDFLARE_ACCOUNT_ID. No usa la Git-integration de Cloudflare: el build
+# necesita el repo hermano del parser + toolchain Go (`npm run sync`), que el
+# entorno de build de Pages no tiene (ver backlog en README.md).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pages-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Mirror en GitHub del parser Go (wasm). `npm run sync` corre
+  # `make -C ../2026-08-31-fountain-parser package`, que exige `dist/`,
+  # así que aquí se clona como hermano igual que en ci.yml. Rama `main`
+  # (confirmada 2026-10-07). Cambiar aquí si el parser se muda de forge.
+  PARSER_REPO: https://github.com/miguehm/contrascripts
+  PARSER_REF: main
+  # Wrangler pineado exacto (regla 1 de AGENTS.md: nada de @latest suelto).
+  WRANGLER_VERSION: 4.148.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Clonar parser (hermano del sync)
+        run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
+        working-directory: ${{ github.workspace }}/..
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: ../2026-08-31-fountain-parser/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+        working-directory: app
+
+      - run: npm run sync
+        working-directory: app
+
+      - run: npm run typecheck
+        working-directory: app
+
+      - run: npm run test
+        working-directory: app
+
+      - run: npm run build
+        working-directory: app
+
+      - name: Subir dist como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: ${{ github.workspace }}/app/dist
+          if-no-files-found: error
+
+  deploy:
+    # Solo publica desde main (o lanzamiento manual). En PRs el job se salta
+    # y `build` ya validó que el bundle compila.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Desplegar a Cloudflare Pages
+        run: npx "wrangler@${WRANGLER_VERSION}" pages deploy dist --project-name contrascripts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

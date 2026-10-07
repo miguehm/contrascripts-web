@@ -268,6 +268,16 @@ Depende de: §2–§6
 
 - `npm run build` → `dist/`; Pages sirve `.wasm` como `application/wasm` por
   defecto → `instantiateStreaming` OK.
+- Deploy automático (2026-10-07): `.github/workflows/deploy-pages.yml`
+  (push a `main` / `workflow_dispatch` → build + `wrangler pages deploy`;
+  en PR solo build sin publicar). El workflow clona el parser del mirror
+  `github.com/miguehm/contrascripts` (rama `main`) como hermano para
+  `npm run sync` (Go 1.24 + Node 20) y despliega con los secrets
+  `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`; wrangler pineado
+  exacto en `WRANGLER_VERSION`. Se descarta la Git-integration de
+  Cloudflare (su entorno de build no tiene el repo hermano + Go).
+  Primer destino: `*.pages.dev`; sin CSP inicial (ver punto siguiente);
+  el custom domain (`contrascripts.miguehm.com`) queda para después.
 - `public/_headers` solo si usas CSP. Una CSP incompleta (solo `script-src`)
   es peor que ninguna: el runtime de Go necesita `'wasm-unsafe-eval'`, Radix y
   React emiten estilos inline, y `_headers` no se aplica en `vite preview`

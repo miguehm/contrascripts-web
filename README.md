@@ -27,21 +27,29 @@ npm run preview # servir dist/ para verificar como en producción
 
 ## Deploy (Cloudflare Pages, §7)
 
-Deploy manual de `dist/` (decisión §7: sin CSP en el primer deploy,
-sin `Cache-Control` en `/fountain/*` — ETag por defecto — y fuentes
-bundleadas vía `@fontsource`, que ya satisfacen `font-src 'self'`):
+Deploy automático con GitHub Actions (`.github/workflows/deploy-pages.yml`):
+push a `main` (o `workflow_dispatch`) → clona el parser del mirror
+`github.com/miguehm/contrascripts` (`main`), Go 1.24 + Node 20,
+`sync → typecheck → test → build` y `wrangler pages deploy dist`
+(proyecto `contrascripts`; el primer deploy lo crea). En PRs solo
+compila sin publicar. Requiere los secrets `CLOUDFLARE_API_TOKEN`
+(Account → Cloudflare Pages → Edit) y `CLOUDFLARE_ACCOUNT_ID`.
+
+Decisión §7: sin CSP en el primer deploy, sin `Cache-Control` en
+`/fountain/*` — ETag por defecto — y fuentes bundleadas vía
+`@fontsource`, que ya satisfacen `font-src 'self'`):
 
 ```bash
 npm run build                              # sync + tsc -b + vite build → dist/
-npx wrangler pages deploy dist --project-name contrascripts
+npx wrangler@4.148.0 pages deploy dist --project-name contrascripts
 # o arrastra la carpeta dist/ en el dashboard de Pages
 ```
 
-> Backlog: conectar git a Pages queda para después. El build de Pages
-> desde git hoy fallaría porque `npm run sync` necesita el repo hermano
-> `../2026-08-31-fountain-parser` + toolchain Go (`make dist`/`package`).
-> Opciones: vendorizar el bundle, submodule con caché, o un job CI que
-> publique `dist/` y Pages lo consuma.
+> Backlog: la Git-integration de Cloudflare (compilar desde git al hacer
+> push) queda descartada por ahora: el build de Pages desde git fallaría
+> porque `npm run sync` necesita el repo hermano del parser + toolchain
+> Go (`make dist`/`package`). El workflow de Actions ya cubre ese hueco
+> clonando el mirror y construyendo `dist/` antes del deploy.
 
 ## De dónde salen los binarios
 
