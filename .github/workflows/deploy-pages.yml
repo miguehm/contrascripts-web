@@ -93,7 +93,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Solo wrangler necesita el 22 (su `engines` lo exige desde la v4);
+          # el job `build` se queda en el 20 del toolchain del repo.
+          node-version: 22
 
       - name: Desplegar a Cloudflare Pages
         run: npx "wrangler@${WRANGLER_VERSION}" pages deploy dist --project-name contrascripts
