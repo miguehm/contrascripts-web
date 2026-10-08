@@ -161,7 +161,9 @@ jobs:
           path: release-assets
 
       - name: Publicar Release
+        # `**/*`: el artefacto linux conserva subdirs `deb/` y `appimage/`
+        # (upload-artifact preserva estructura); `*` solo vería la APK.
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/*
+          files: release-assets/**/*
           generate_release_notes: true
