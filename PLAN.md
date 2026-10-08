@@ -28,23 +28,32 @@ Depende de: —
 - **Pinear versiones** en lugar de `@latest` (ver §2): `@latest` deriva y rompe
   la reproducibilidad; el parser fija su toolchain por `manifest.json` y el
   front debería seguir el mismo criterio.
-- Layout de carpetas que el resto del plan asume:
+- Layout de carpetas real (reescrito 2026-10-08; el supuesto inicial quedó
+  como desvío aceptado: no se crean `lib/format.ts` ni `lib/id.ts` por no
+  crear código muerto):
   ```
   src/
-    components/     UI propia
+    components/     EditorColumn, ExportButton, SplitWorkspace, ThemeToggle
     components/ui/  shadcn (copiados)
-    features/       editor/ preview/ navigator/ scripts/
-    hooks/          useScripts, useTheme, useParser
-    lib/            utils.ts (cn), format, id
-    store/          ScriptsProvider (context + reducer)
+    features/       editor/ help/ navigator/ preview/ scenes/ scripts/ settings/
+    hooks/          useParser, useScripts, useTheme, useEditorPrefs,
+                    useEditorPosition, usePreviewScroll, usePreviewZoom,
+                    usePreviewOpen, useSidebarCollapsed, useSidebarTab,
+                    useWarningsOpen
+    lib/            names, scenes, scripts, pdfjs, sample, utils
+    store/          ScriptsProvider (context + reducer), preferences,
+                    *Storage (storage, trash, activeScript, theme, editor,
+                    preview, split, ui, warnings, backup, keyMigration)
     types/          Script, Theme, ParseResult
     vendor/         fountain.mjs + fountain.d.mts (copiados, ver gotcha §3)
   public/
     fountain/       .wasm + wasm_exec.js + manifest.json
-    fonts/          Plus Jakarta Sans, Courier Prime (self-host)
+    fonts/          .gitkeep (reserva Tauri/Capacitor; fuentes vía @fontsource)
   ```
 - Persistencia centralizada en `store/` y accedida por hooks; los componentes no
   leen `localStorage` directamente (evita claves dispersas y facilita tests).
+  Claves canónicas `contrascripts.*.v1` con legacy `guion.*.v1` migradas
+  en lectura.
 
 ## 1. Generar el paquete WASM (ya existente)
 
@@ -178,33 +187,56 @@ fixture para la aserción de StrictMode (§9.5).
 > `window.__fountainBoots === 1` (§9.5) se verifica en §5, cuando la UI
 > monte `loadFountain()` (aún nadie lo llama).
 
-## Deuda / desvíos registrados (2026-10-02)
+## Deuda / desvíos registrados (2026-10-02) — actualización 2026-10-08
 
 Verificados §0–§4 sin bloqueantes; pendientes que no impiden §4 pero hay
-que saldar antes o durante las fases indicadas:
+que saldar antes o durante las fases indicadas. Estado 2026-10-08:
+✔ = liberada, ⏸ = diferido fuera del MVP (ver bloque al final).
 
 - §2 `tsconfig.app.json`: el plan pide `baseUrl: "."` (shadcn lo requería),
   pero con TypeScript 6 `baseUrl` está deprecado (`tsc -b` falla con
   TS5101; dejará de funcionar en TS 7). **Saldado de otro modo**: solo
   `paths: { "@/*" }`, que TS ≥4.1 resuelve relativo al tsconfig y Vite
   cubre con su alias; verificado `tsc -b` + `build` limpios con un
-  import `@/` real (`ui/dialog.tsx`). No reintroducir `baseUrl` salvo
-  que el CLI de shadcn lo exija de nuevo.
+  import `@/` real (`ui/dialog.tsx`). ✔ vigente 2026-10-08. No reintroducir
+  `baseUrl` salvo que el CLI de shadcn lo exija de nuevo.
 - §2 scaffold: `typescript: ~6.0.2` y `vite: 8.3.0` frente a `typescript@^5` /
   Vite 7 del plan. Deriva aceptable: lo que importa (pineado exacto de
-  `vite`, `react`, `react-dom`) se cumple; no reaccionar salvo que §9.4
-  dé guerra.
-- §2b `src/lib/utils.ts`: es `export { cn } from 'cn'` (artefacto del estilo
-  `radix-nova` de `shadcn init`), no el helper `clsx + tailwind-merge` que
-  el plan asume. Revisar en §8 si `cn` cubre `tailwind-merge`; si no,
-  volver al helper manual.
-- §2/§8 fuentes: instalado `@fontsource-variable/geist`; `public/fonts/`
-  sigue vacío (Plus Jakarta Sans + Courier Prime self-host pendientes
-  de §8). `src/index.css` trae además `tw-animate-css` y
-  `shadcn/tailwind.css` del init, fuera del esbozo del plan.
-- §8 tokens: `src/index.css` usa la paleta `oklch` neutra por defecto de
-  shadcn, no los tokens Warm/Cinematic de este plan. Esperado (se
-  implementa en §8); no usar los colores actuales como referencia.
+  `vite`, `react`, `react-dom`) se cumple; ✔ vigente 2026-10-08, no reaccionar
+  salvo que §9.4 dé guerra.
+- §2b `src/lib/utils.ts`: ✔ **liberada 2026-10-08** — se mantiene
+  `export { cn } from 'cn'` con `cn` pineado exacto (`0.4.0`, sin `^`).
+  `cn` es drop-in documentado de `clsx + tailwind-merge` (misma API y
+  semántica de merge, Tailwind v4; upstream lo verifica con tests
+  diferenciales). Paridad cubierta por `src/lib/utils.test.ts`
+  (conflicto `px-2/px-4`, condicionales falsy, variantes `hover:` intactas).
+  No volver al helper manual.
+- §2/§8 fuentes: ✔ **liberado parcial 2026-10-08** — canónico =
+  `@fontsource/plus-jakarta-sans` + `@fontsource/courier-prime` bundleados
+  (satisface `font-src 'self'` de §7; `geist` ya no existe en `package.json`).
+  `public/fonts/` queda solo con `.gitkeep` como reserva para
+  Tauri/Capacitor; no duplicar binarios. `tw-animate-css` y
+  `shadcn/tailwind.css` en `src/index.css` se quedan (parte del init,
+  cubren animaciones Radix/`sonner`), no se podan.
+- §8 tokens: ✔ **liberado 2026-10-08** — `src/index.css` implementa el bloque
+  del plan (`:root` Warm / `.dark` Cinematic, juego completo shadcn +
+  `--paper/--paper-ink/--syntax` con `--syntax` separado de `--accent`);
+  verificado `typecheck + lint + test + build` limpios. El refinamiento
+  visual restante queda diferido (ver bloque ⏸).
+- §0 layout: ✔ **saldado 2026-10-08** — árbol de §0 reescrito al real
+  (sin `lib/format.ts`/`lib/id.ts`; no se crea código muerto). No reabrir.
+- §5 preview: ✔ **saldado 2026-10-08** — preview-PDF por Worker + pdf.js
+  sustituye al render de `doc.elements`; editor CodeMirror sustituye al
+  `<textarea>`. Bloques §5 reescritos. No volver al render DOM.
+
+### Diferido fuera del MVP (no bloquea §9) — 2026-10-08
+
+- Refinamiento visual §8 (no funcional): `paper-shadow`, elevación Level 2,
+  roles `display-lg/headline/label`, modo foco `820px` + chrome atenuado,
+  hoja `8.5×11in` con brads/guías, chips `10px uppercase`, toggle `16×28px`.
+- §7: custom domain (`contrascripts.miguehm.com`), `public/_headers`/CSP y
+  cache opción (b). Se mantiene opción (a): ETag por defecto, sin declarar
+  `Cache-Control` en `/fountain/*`.
 
 ## 5. UI
 
@@ -212,21 +244,29 @@ Depende de: §4
 
 - **Boot**: `useEffect` con flag `alive` + `loadFountain()` →
   `ready | booting | error`.
-- **Editor**: `<textarea>` controlado.
+- **Editor**: CodeMirror 6 aislado en `components/EditorColumn.tsx` (evolución
+  superada del `<textarea>` controlado que pedía el plan inicial).
 - **Parse/lint reactivo**: síncronos y bloquean el main thread → colapsar con
   rAF (patrón `App.jsx:33-54`). **Corregir el bug del fixture**: guardar el id
   del frame (`const id = requestAnimationFrame(...)`) y cancelar con él; el
   fixture hace `cancelAnimationFrame(0)` que no cancela nada. El cleanup del
   effect debe cancelar el frame pendiente y poner `queued = false`.
-- **Preview**: render de `doc.elements` respetando `uppercase`, `baseItalic`,
-  `dual`, `level` (sections) y `inline`. Ojo: `inline` solo viene donde el PDF
-  honra `**bold**`/`*italic*` → fallback siempre a `text`. Incluir también
-  `titlePage`. Memoizar el render (`useMemo` sobre `doc`) para no re-renderizar
-  la hoja en cada tecla.
+- **Preview** (reescrito 2026-10-08, desvío aceptado: el render de
+  `doc.elements` con `uppercase/baseItalic/dual/level/inline/titlePage` queda
+  sustituido por el PDF real): `render`/`paginate` de Go dentro de un Web
+  Worker clásico (`features/preview/pdfWorker.ts`, cargado con
+  `importScripts(wasm_exec.js)`) vía `pdfWorkerClient.ts` (protocolo
+  `init/render/paginate` con `seq` para descartar renders viejos) → `bytes` →
+  raster con pdf.js (`PdfPreview.tsx`, `usePdfPreview.ts`, `useScenePages.ts`).
+  Lo visible es lo descargable y el main thread nunca se bloquea aunque el
+  render tarde ~1s en guiones largos. Si el preview está oculto se marca dirty
+  y renderiza al volver. `doc = fountain.parse(text)` queda como fuente de
+  stats/escenas/warnings, no de la hoja.
 - **Warnings**: `lint()` → lista con `line`, `code`, `message`. Mostrar los
   `Warning` con `aria-live="polite"` para que un lector de pantalla anuncie el
   recuento al cambiar.
-- **Exportar PDF**: `renderPDF(text)` → `Uint8Array` → Blob
+- **Exportar PDF**: consume los `bytes` del worker del preview (mismo PDF,
+  sin segundo render; si aún es `null` el botón espera) → Blob
   `application/pdf` → descarga, con estado `busy` y `try/catch` que reporte por
   `sonner`. Tras el boot, precargar en idle para que el primer export no cargue
   el wasm (~6.5 MiB) en frío:
@@ -490,7 +530,7 @@ toolbar, etc.), no como CSS desde cero.
 - `src/index.css`: `@import "tailwindcss"`, bloque `@theme inline`, tokens
   `:root`/`.dark` y utilidades base.
 - `src/components/ui/*`: componentes shadcn (copiados, no dependencia).
-- `src/lib/utils.ts`: helper `cn` (clsx + tailwind-merge).
+- `src/lib/utils.ts`: re-export `cn` del paquete `cn` (drop-in de `clsx + tailwind-merge`, pineado exacto; paridad en `src/lib/utils.test.ts`).
 - `src/store/`: `ScriptsProvider` (context + reducer), persistencia y tema.
 - `src/hooks/`: `useScripts`, `useTheme`, `useParser`.
 - `src/types/`: `Script`, `Theme`, `ParseResult`.
@@ -598,6 +638,38 @@ entorno, no bug — con rAF activo todo renderiza.
   `--ring` ámbar; trap de foco = default Radix (sin override propio).
 - 9.9 `lint` + `format:check` limpios (se ignoran `.agents/`,
   `test-results/`, `playwright-report/` por ser artefactos externos).
+
+## Verificación §9 — re-ejecución 2026-10-08 (tras §0/§5 reescritos)
+
+Entorno: dev `:5173`, Chromium de Playwright (CDP no disponible en el
+runner; Chrome DevTools MCP sin Chrome con puerto de depuración — se cubrió
+con script Playwright equivalente). Resultado: PASS con 1 flake documentado.
+
+- 9.0 `npm run sync` OK (parser 2.897.213 + pdf 6.817.906 bytes,
+  `wasm_exec.js`, `manifest.json`); `public/fountain` sin `fountain.mjs`;
+  `src/vendor/*.mjs/.d.mts`.
+- 9.1 dev: `[data-engine-status="ready"]`, `fountain-parser.wasm` 200
+  `application/wasm` (curl + red Playwright), wrapper desde el bundle
+  (`src/vendor/fountain.mjs`), preload `fountain-pdf.wasm` en idle en red.
+- 9.2 `npm run build` limpio (`tsc -b` + vite, 2,04s; aviso chunk >500KB
+  por `pdf.worker` + bundle, aceptado). Preview `:4173` pendiente de
+  repetición manual (mismo camino que 2026-10-02).
+- 9.3 PDF cubierto por e2e (descarga válida) + `ExportButton` espera bytes
+  del worker; bloqueo de `fountain-pdf.wasm` verificado el 2026-10-02,
+  sin cambios en esa ruta desde entonces.
+- 9.4 `tsc --noEmit` limpio. 9.5 `window.__fountainBoots === 1` (Playwright).
+- 9.6/9.7 cubiertos por e2e (persistencia `contrascripts.scripts.v1` +
+  `activeId`, reload, corrupto → boot sano; tema `contrascripts.theme.v1`).
+  `flush` al cerrar verificado el 2026-10-02, sin cambios en esa ruta.
+- 9.8 cubierto por e2e + `Warnings.test.tsx` (`aria-live="polite"`);
+  trap de foco = default Radix. Revisión manual de Tab completa pendiente
+  junto a 9.2.
+- 9.9 `lint` + `format:check` limpios.
+- Unit: 35 ficheros / 381 tests PASS. E2E: 34/35 en corrida completa;
+  el fallo (`e2e.spec.ts:941` pestaña Escenas, `controlErrorOfLastPage < 3`
+  tras 1,2s estable) **pasa aislado (13,9s)** → flake de carga, no regresión.
+- Remoto: pendiente push a rama/PR para `ci.yml` + job `build` de
+  `deploy-pages.yml` en verde (puerta de deploy).
 
 ## Calidad §10 — implementada 2026-10-02
 
