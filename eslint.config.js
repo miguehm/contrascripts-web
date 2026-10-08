@@ -6,7 +6,7 @@ import prettier from 'eslint-config-prettier'
 import tseslint from 'typescript-eslint'
 
 export default defineConfig(
-  { ignores: ['dist', 'src/vendor', 'public/fountain'] },
+  { ignores: ['dist', 'src/vendor', 'public/fountain', 'src-tauri/target'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,

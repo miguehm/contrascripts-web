@@ -4,6 +4,8 @@ test-results/
 playwright-report/
 src/vendor/
 src/components/ui/
+src-tauri/target/
+src-tauri/gen/
 
 # Skills/agentes externos: artefactos instalados, no fuente propia.
 .agents/

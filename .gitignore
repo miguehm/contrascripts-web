@@ -10,3 +10,7 @@ src/vendor/*
 !src/vendor/.gitkeep
 public/fountain/*
 !public/fountain/.gitkeep
+# Tauri (Fase T1): artefactos Rust y bundles; src-tauri/ sí se versiona.
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
