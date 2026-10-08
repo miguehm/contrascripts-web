@@ -1,0 +1,83 @@
+name: android
+
+# APK nativa (Capacitor). Valida en push/PR que el wrapper compila
+# (assembleRelease sin firma si no hay secrets); la APK firmada para
+# distribuir la construye `release.yml` con el keystore (D2).
+#
+# Reutiliza el trío del resto de jobs (parser hermano + Go para
+# `npm run sync`) + JDK 21 (Capacitor 8 compila con release 21; espejo de
+# `scripts/android-env.sh`) + SDK por setup-android.
+
+on:
+  push:
+  pull_request:
+
+env:
+  PARSER_REPO: https://github.com/miguehm/contrascripts
+  PARSER_REF: main
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Clonar parser (hermano del sync)
+        run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: 2026-08-31-fountain-parser/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: SDK Android
+        uses: android-actions/setup-android@v3
+
+      - name: Plataforma y build-tools del wrapper
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+
+      - run: npm ci
+        working-directory: app
+
+      # build web + `cap sync android` (assets a android/app/src/main/assets).
+      - run: npm run android
+        working-directory: app
+
+      # Keystore solo si hay secrets (main/tags, nunca PRs de forks): sin
+      # env la release sale sin firmar pero valida que compila.
+      - name: Keystore release
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: APK release
+        run: ./gradlew assembleRelease
+        working-directory: app/android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && '/tmp/release.keystore' || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrascripts-android
+          path: ${{ github.workspace }}/app/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

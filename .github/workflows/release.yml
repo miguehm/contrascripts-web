@@ -1,0 +1,167 @@
+name: release
+
+# Publica la Release en GitHub al pushear un tag `v*` (AGENTS.md regla 6):
+#   .deb + .AppImage (Tauri Linux) y APK firmada (Capacitor Android).
+#
+# Los jobs construyen desde cero (los artefactos no se comparten entre
+# workflows): duplican `tauri.yml`/`android.yml` a propósito; esos siguen
+# validando push/PR y este solo publica tags. Requiere los secrets del
+# keystore (D2): sin ellos el job android falla en vez de publicar sin
+# firma.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  PARSER_REPO: https://github.com/miguehm/contrascripts
+  PARSER_REF: main
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Clonar parser (hermano del sync)
+        run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: 2026-08-31-fountain-parser/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Toolchain Rust estable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Deps del sistema (WebKitGTK)
+        run: >
+          sudo apt-get update &&
+          sudo apt-get install -y
+          libwebkit2gtk-4.1-dev build-essential curl wget file
+          libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - run: npm ci
+        working-directory: app
+
+      - run: npm run tauri build
+        working-directory: app
+
+      - name: Subir bundle Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrascripts-linux
+          path: |
+            ${{ github.workspace }}/app/src-tauri/target/release/bundle/deb/*.deb
+            ${{ github.workspace }}/app/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Clonar parser (hermano del sync)
+        run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: 2026-08-31-fountain-parser/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: SDK Android
+        uses: android-actions/setup-android@v3
+
+      - name: Plataforma y build-tools del wrapper
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Secrets del keystore presentes
+        run: |
+          for s in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!s}" ] || { echo "Falta el secret $s (D2)"; exit 1; }
+          done
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - run: npm ci
+        working-directory: app
+
+      - run: npm run android
+        working-directory: app
+
+      - name: Keystore release
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: APK firmada
+        run: ./gradlew assembleRelease
+        working-directory: app/android
+        env:
+          ANDROID_KEYSTORE_FILE: /tmp/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrascripts-android
+          path: ${{ github.workspace }}/app/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  publish:
+    needs: [linux, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Descargar bundle Linux
+        uses: actions/download-artifact@v4
+        with:
+          name: contrascripts-linux
+          path: release-assets
+
+      - name: Descargar APK
+        uses: actions/download-artifact@v4
+        with:
+          name: contrascripts-android
+          path: release-assets
+
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
