@@ -34,3 +34,7 @@ necesita Go para `make dist` (o bundle cacheado). Se documenta en el workflow (�
 3. **`src/vendor/` es artefacto**: nunca editar a mano; regenerar con `npm run sync`.
 4. **`base: './fountain'`** relativo desde §4; no usar `'/fountain'`.
 5. **Commits**: convención `feat:`, `fix:`, `chore:`...
+6. **Versión única**: `package.json` manda; `src-tauri/tauri.conf.json`
+   (`version`) se iguala a mano en cada bump. Android `versionCode`
+   (`android/variables.gradle`) +1 en cada release (lo exige el SO para
+   updates). Tags `vX.Y.Z` disparan `release.yml`.
