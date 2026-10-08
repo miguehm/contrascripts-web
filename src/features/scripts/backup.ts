@@ -45,10 +45,19 @@ export function backupFilename(at: number = Date.now()): string {
   return `contrascripts-${y}-${m}-${day}.json`
 }
 
-/** Descarga la copia (web: Blob + `a[download]`). */
-export function downloadBackup(scripts: Script[]): void {
+/**
+ * ¿Nombre restaurable como copia? En Capacitor no se filtra por `accept`
+ * (misma razón que `.fountain` en `scriptFiles.isImportableName`): la
+ * puerta es esta validación con toast de rechazo en quien llama.
+ */
+export function isBackupFilename(name: string): boolean {
+  return name.split('.').pop()?.toLowerCase() === 'json'
+}
+
+/** Guarda la copia (web: descarga; Tauri: diálogo nativo). */
+export function downloadBackup(scripts: Script[]): Promise<void> {
   const payload = buildBackup(scripts)
-  downloadTextFile(
+  return downloadTextFile(
     backupFilename(payload.exportedAt),
     JSON.stringify(payload, null, 2),
     'application/json;charset=utf-8',

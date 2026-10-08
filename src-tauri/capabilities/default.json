@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capacidades mínimas del MVP Tauri (Linux): diálogos nativos + FS acotado a $HOME",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$HOME/**" }]
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+name: tauri
+
+# Bundle nativo Linux (plan Tauri T4). El job web de `ci.yml` ya cubre
+# lint/typecheck/test/e2e; aquí solo se verifica que el binario Tauri
+# compila y empaqueta (.deb + .AppImage) con los plugins dialog+fs.
+#
+# Reutiliza el mismo trío que el resto de jobs (parser hermano + Go para
+# `npm run sync`, que corre dentro del `beforeBuildCommand`), más
+# toolchain Rust y deps WebKitGTK. Windows/macOS quedan fuera de v1.
+
+on:
+  push:
+  pull_request:
+
+env:
+  PARSER_REPO: https://github.com/miguehm/contrascripts
+  PARSER_REF: main
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Clonar parser (hermano del sync)
+        run: git clone --depth 1 --branch "$PARSER_REF" "$PARSER_REPO" 2026-08-31-fountain-parser
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: 2026-08-31-fountain-parser/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Toolchain Rust estable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Deps del sistema (WebKitGTK)
+        run: >
+          sudo apt-get update &&
+          sudo apt-get install -y
+          libwebkit2gtk-4.1-dev build-essential curl wget file
+          libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - run: npm ci
+        working-directory: app
+
+      # `beforeBuildCommand` = `npm run build` (sync + tsc + vite); el
+      # bundle sale de `src-tauri/target/release/bundle/`.
+      - run: npm run tauri build
+        working-directory: app
+
+      - name: Subir .deb y .AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrascripts-linux
+          path: |
+            ${{ github.workspace }}/app/src-tauri/target/release/bundle/deb/*.deb
+            ${{ github.workspace }}/app/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

@@ -51,6 +51,32 @@ npx wrangler@4.148.0 pages deploy dist --project-name contrascripts
 > Go (`make dist`/`package`). El workflow de Actions ya cubre ese hueco
 > clonando el mirror y construyendo `dist/` antes del deploy.
 
+## Nativo (Tauri v2, Linux)
+
+El mismo `dist/` web empaquetado como app de escritorio (WebView del
+sistema). Sin duplicar código: la E/S pasa por `src/platform/files.ts`
+(web: Blob/download; Tauri: `plugin-dialog` + `plugin-fs` con diálogos
+nativos) y los plugins solo se importan con `import()` dinámico, así que
+el bundle web no los incluye.
+
+```bash
+npm run tauri dev    # devUrl http://localhost:5173, ventana 1280×800
+npm run tauri build  # .deb + .AppImage en src-tauri/target/release/bundle/
+```
+
+Requisitos extra (Arch/Debian): toolchain Rust estable + WebKitGTK 4.1
+(p.ej. `libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev
+libssl-dev libayatana-appindicator3-dev librsvg2-dev` en Ubuntu).
+Capacidades mínimas en `src-tauri/capabilities/default.json` (dialog
+abrir/guardar + FS acotado a `$HOME`). CI: `.github/workflows/tauri.yml`
+(compila el bundle en Ubuntu; Windows/macOS fuera de v1).
+
+Verificado local 2026-10-08: `tauri build` genera `.deb` (6,7 MiB) +
+`.AppImage`, el binario arranca en Wayland con boot/parser/preview-PDF
+funcionales y `web: 36f/392t unit + 35/35 e2e` en verde. Pendiente manual:
+guardar PDF y abrir `.fountain` con los diálogos nativos (clicar Exportar
+PDF / Importar y confirmar el archivo).
+
 ## De dónde salen los binarios
 
 Los artefactos WASM **no** se versionan aquí; se regeneran desde el parser:

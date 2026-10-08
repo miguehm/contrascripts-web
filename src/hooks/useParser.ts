@@ -47,6 +47,16 @@ export function useParser(text: string): ParserState {
 
   // Solo suscribe al boot (los setState viven en callbacks async).
   const startBoot = useCallback(() => {
+    // Guardia WebView antiguo (Capacitor, minSdk 24): sin WebAssembly el
+    // runtime Go no puede arrancar; mensaje explícito en vez de un fallo
+    // críptico del fetch/instantiate. El preload de §5 queda intacto.
+    // setState síncrono en el efecto de montaje a propósito: es el estado
+    // inicial de error, no una sincronización derivada.
+    if (typeof WebAssembly === 'undefined') {
+      setBootError('Este WebView no soporta WebAssembly (se exige Chrome 80+)')
+      setStatus('error')
+      return () => {}
+    }
     const seq = ++bootSeq.current
     let alive = true
     loadFountain().then(
@@ -74,6 +84,9 @@ export function useParser(text: string): ParserState {
     startBoot()
   }, [startBoot])
 
+  // Boot en montaje. Incluye el setState síncrono de la guardia
+  // WebAssembly (estado inicial de error, no sincronización derivada).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => startBoot(), [startBoot])
 
   // Parse/lint reactivo colapsado con rAF.

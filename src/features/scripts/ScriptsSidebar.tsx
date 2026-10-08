@@ -325,7 +325,7 @@ export function ScriptsSidebar({
                                 Renombrar
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onSelect={() => exportScript(s)}
+                                onSelect={() => void exportScript(s)}
                               >
                                 <Download aria-hidden="true" />
                                 Exportar .fountain
@@ -416,7 +416,7 @@ export function ScriptsSidebar({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (deleteTarget) exportScript(deleteTarget)
+                    if (deleteTarget) void exportScript(deleteTarget)
                   }}
                 >
                   <Download aria-hidden="true" />

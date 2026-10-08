@@ -21,11 +21,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { useScripts } from '@/hooks/useScripts'
+import { getPlatformFiles, isCapacitorNative, isTauri } from '@/platform/files'
 import { loadLastBackup, saveLastBackup } from '@/store/backupStorage'
 import type { Script } from '@/types/Script'
 import {
   dedupeIds,
   downloadBackup,
+  isBackupFilename,
   parseBackup,
 } from '@/features/scripts/backup'
 
@@ -48,6 +50,9 @@ export function BackupSection() {
   // puros: nada de `Date.now()` durante el render).
   const [now] = useState(() => Date.now())
   const fileRef = useRef<HTMLInputElement>(null)
+  // `busy` cubre el diálogo nativo (Tauri); en web el input es síncrono.
+  const [busy, setBusy] = useState(false)
+  const isTauriNative = isTauri()
   // Borrado definitivo con confirmación: objetivo + texto escrito.
   const [purgeTarget, setPurgeTarget] = useState<Script | null>(null)
   const [confirmText, setConfirmText] = useState('')
@@ -81,17 +86,41 @@ export function BackupSection() {
     return Math.floor((now - lastBackup) / (24 * 60 * 60 * 1000))
   }, [lastBackup, now])
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (scripts.length === 0) {
       toast.info('Sin guiones que copiar')
       return
     }
-    downloadBackup(scripts)
-    const now = Date.now()
-    saveLastBackup(now)
-    setLastBackup(now)
-    toast.success('Copia exportada', {
-      description: `${scripts.length} guion(es) en un .json.`,
+    try {
+      await downloadBackup(scripts)
+      const now = Date.now()
+      saveLastBackup(now)
+      setLastBackup(now)
+      toast.success('Copia exportada', {
+        description: `${scripts.length} guion(es) en un .json.`,
+      })
+    } catch (err) {
+      toast.error('No se pudo exportar la copia', {
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const importBackupText = (raw: string) => {
+    const { scripts: parsed, dropped } = parseBackup(raw)
+    if (parsed.length === 0) {
+      toast.error('La copia no contiene guiones válidos', {
+        description:
+          dropped > 0 ? `${dropped} elemento(s) descartados.` : undefined,
+      })
+      return
+    }
+    const existing = new Set(scripts.map((s) => s.id))
+    importManyScripts(dedupeIds(parsed, existing))
+    toast.success('Copia importada', {
+      description:
+        `${parsed.length} guion(es).` +
+        (dropped > 0 ? ` ${dropped} descartado(s).` : ''),
     })
   }
 
@@ -99,27 +128,55 @@ export function BackupSection() {
     const file = files?.[0]
     if (!file) return
     try {
-      const { scripts: parsed, dropped } = parseBackup(await file.text())
-      if (parsed.length === 0) {
-        toast.error('La copia no contiene guiones válidos', {
-          description:
-            dropped > 0 ? `${dropped} elemento(s) descartados.` : undefined,
+      if (!isBackupFilename(file.name)) {
+        toast.error('Tipo de archivo no soportado', {
+          description: 'Solo se aceptan copias .json',
         })
         return
       }
-      const existing = new Set(scripts.map((s) => s.id))
-      importManyScripts(dedupeIds(parsed, existing))
-      toast.success('Copia importada', {
-        description:
-          `${parsed.length} guion(es).` +
-          (dropped > 0 ? ` ${dropped} descartado(s).` : ''),
-      })
+      importBackupText(await file.text())
     } catch (err) {
       toast.error('No se pudo importar la copia', {
         description: err instanceof Error ? err.message : String(err),
       })
     } finally {
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  /** Importar copia: diálogo nativo en Tauri/Capacitor, input oculto en web. */
+  const handleImportClick = async () => {
+    if (busy) return
+    if (!isTauriNative && !isCapacitorNative()) {
+      fileRef.current?.click()
+      return
+    }
+    setBusy(true)
+    try {
+      // En Capacitor sin `filters` (ver `pickTextFile` en platform/files):
+      // la puerta es `isBackupFilename`.
+      const picked = await getPlatformFiles().pickTextFile(
+        isCapacitorNative()
+          ? { title: 'Importar copia' }
+          : {
+              title: 'Importar copia',
+              filters: [{ name: 'JSON', extensions: ['json'] }],
+            },
+      )
+      if (!picked) return
+      if (!isBackupFilename(picked.name)) {
+        toast.error('Tipo de archivo no soportado', {
+          description: 'Solo se aceptan copias .json',
+        })
+        return
+      }
+      importBackupText(picked.text)
+    } catch (err) {
+      toast.error('No se pudo importar la copia', {
+        description: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -151,7 +208,7 @@ export function BackupSection() {
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
-          onClick={handleExport}
+          onClick={() => void handleExport()}
           disabled={scripts.length === 0}
         >
           <Download aria-hidden="true" />
@@ -160,7 +217,8 @@ export function BackupSection() {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => fileRef.current?.click()}
+          onClick={() => void handleImportClick()}
+          disabled={busy}
         >
           <Upload aria-hidden="true" />
           Importar copia
@@ -171,6 +229,7 @@ export function BackupSection() {
           accept=".json,application/json"
           aria-label="Importar copia (.json)"
           className="hidden"
+          tabIndex={-1}
           onChange={(e) => void handleImportFile(e.target.files)}
         />
       </div>

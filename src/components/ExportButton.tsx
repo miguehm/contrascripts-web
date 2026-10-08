@@ -2,11 +2,14 @@
 //
 // Descarga los últimos bytes generados por el worker del preview (caché del
 // hook `usePdfPreview`): preview y descarga son el mismo PDF, sin un segundo
-// render. Si aún no hay bytes (primer render en curso), el botón espera.
+// render. El guardado pasa por `src/platform/files.ts` (web: descarga;
+// Tauri: diálogo nativo). Si aún no hay bytes (primer render en curso), el
+// botón espera.
 
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { getPlatformFiles } from '@/platform/files'
 
 interface ExportButtonProps {
   bytes: Uint8Array | null
@@ -24,17 +27,11 @@ export function ExportButton({
     setBusy(true)
     try {
       // Copia: el caché del hook sigue vivo para el siguiente preview.
-      const blob = new Blob([bytes.slice().buffer as ArrayBuffer], {
-        type: 'application/pdf',
-      })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      await getPlatformFiles().saveFile(
+        bytes.slice(),
+        filename,
+        'application/pdf',
+      )
       toast.success('PDF exportado')
     } catch (err) {
       toast.error('No se pudo exportar el PDF', {
