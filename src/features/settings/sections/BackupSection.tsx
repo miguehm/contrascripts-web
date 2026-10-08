@@ -21,12 +21,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { useScripts } from '@/hooks/useScripts'
-import { getPlatformFiles, isTauri } from '@/platform/files'
+import { getPlatformFiles, isCapacitorNative, isTauri } from '@/platform/files'
 import { loadLastBackup, saveLastBackup } from '@/store/backupStorage'
 import type { Script } from '@/types/Script'
 import {
   dedupeIds,
   downloadBackup,
+  isBackupFilename,
   parseBackup,
 } from '@/features/scripts/backup'
 
@@ -127,6 +128,12 @@ export function BackupSection() {
     const file = files?.[0]
     if (!file) return
     try {
+      if (!isBackupFilename(file.name)) {
+        toast.error('Tipo de archivo no soportado', {
+          description: 'Solo se aceptan copias .json',
+        })
+        return
+      }
       importBackupText(await file.text())
     } catch (err) {
       toast.error('No se pudo importar la copia', {
@@ -137,20 +144,33 @@ export function BackupSection() {
     }
   }
 
-  /** Importar copia: diálogo nativo en Tauri, input oculto en web. */
+  /** Importar copia: diálogo nativo en Tauri/Capacitor, input oculto en web. */
   const handleImportClick = async () => {
     if (busy) return
-    if (!isTauriNative) {
+    if (!isTauriNative && !isCapacitorNative()) {
       fileRef.current?.click()
       return
     }
     setBusy(true)
     try {
-      const picked = await getPlatformFiles().pickTextFile({
-        title: 'Importar copia',
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      })
-      if (picked) importBackupText(picked.text)
+      // En Capacitor sin `filters` (ver `pickTextFile` en platform/files):
+      // la puerta es `isBackupFilename`.
+      const picked = await getPlatformFiles().pickTextFile(
+        isCapacitorNative()
+          ? { title: 'Importar copia' }
+          : {
+              title: 'Importar copia',
+              filters: [{ name: 'JSON', extensions: ['json'] }],
+            },
+      )
+      if (!picked) return
+      if (!isBackupFilename(picked.name)) {
+        toast.error('Tipo de archivo no soportado', {
+          description: 'Solo se aceptan copias .json',
+        })
+        return
+      }
+      importBackupText(picked.text)
     } catch (err) {
       toast.error('No se pudo importar la copia', {
         description: err instanceof Error ? err.message : String(err),

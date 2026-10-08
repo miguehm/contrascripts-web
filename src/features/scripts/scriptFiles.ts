@@ -13,6 +13,20 @@ export const IMPORT_FILTERS: { name: string; extensions: string[] }[] = [
   { name: 'Fountain', extensions: ['fountain', 'txt'] },
 ]
 
+const IMPORTABLE_EXTENSIONS = new Set(
+  IMPORT_FILTERS.flatMap((f) => f.extensions),
+)
+
+/**
+ * ¿Nombre importable como guion? En Capacitor no se filtra por `accept`
+ * (Android no conoce `.fountain` y lo deshabilita), así que la puerta es
+ * esta validación con toast de rechazo en quien llama.
+ */
+export function isImportableName(name: string): boolean {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  return IMPORTABLE_EXTENSIONS.has(ext)
+}
+
 /** Nombre de archivo para exportar un guion. */
 export function scriptFilename(script: Script): string {
   return `${sanitizeFilename(script.title)}.fountain`

@@ -7,6 +7,7 @@ import {
   backupFilename,
   buildBackup,
   dedupeIds,
+  isBackupFilename,
   parseBackup,
 } from '@/features/scripts/backup'
 
@@ -68,5 +69,18 @@ describe('dedupeIds', () => {
     const ids = out.map((s) => s.id)
     expect(new Set(ids).size).toBe(2)
     expect(ids).not.toContain('s1')
+  })
+})
+
+describe('isBackupFilename', () => {
+  it('acepta .json en cualquier caja', () => {
+    expect(isBackupFilename('contrascripts-2026-10-08.json')).toBe(true)
+    expect(isBackupFilename('COPIA.JSON')).toBe(true)
+  })
+
+  it('rechaza el resto', () => {
+    expect(isBackupFilename('guion.fountain')).toBe(false)
+    expect(isBackupFilename('notas.txt')).toBe(false)
+    expect(isBackupFilename('sin-extension')).toBe(false)
   })
 })
