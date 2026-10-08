@@ -14,3 +14,10 @@ public/fountain/*
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/
+# Capacitor Android (Fase 2, rama Android): artefactos Gradle y ficheros de
+# máquina; android/ (wrapper + manifiestos) sí se versiona, igual que src-tauri/.
+android/app/build/
+android/.gradle/
+android/local.properties
+android/*.keystore
+*.jks

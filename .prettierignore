@@ -6,6 +6,8 @@ src/vendor/
 src/components/ui/
 src-tauri/target/
 src-tauri/gen/
+# Proyecto nativo Capacitor: wrapper generado + copia de dist/ tras `cap sync`.
+android/
 
 # Skills/agentes externos: artefactos instalados, no fuente propia.
 .agents/
