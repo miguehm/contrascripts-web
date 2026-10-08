@@ -45,10 +45,10 @@ export function backupFilename(at: number = Date.now()): string {
   return `contrascripts-${y}-${m}-${day}.json`
 }
 
-/** Descarga la copia (web: Blob + `a[download]`). */
-export function downloadBackup(scripts: Script[]): void {
+/** Guarda la copia (web: descarga; Tauri: diálogo nativo). */
+export function downloadBackup(scripts: Script[]): Promise<void> {
   const payload = buildBackup(scripts)
-  downloadTextFile(
+  return downloadTextFile(
     backupFilename(payload.exportedAt),
     JSON.stringify(payload, null, 2),
     'application/json;charset=utf-8',

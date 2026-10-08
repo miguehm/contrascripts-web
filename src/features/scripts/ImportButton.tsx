@@ -1,15 +1,17 @@
 // src/features/scripts/ImportButton.tsx — importar `.fountain`/`.txt` (§6).
 //
-// `<input type="file">` oculto + botón shadcn. Al elegir archivo lo lee
-// como texto y lo añade como guion nuevo con el nombre del archivo como
-// título. Reutilizable en sidebar (desktop) y barra compacta (móvil).
+// Detrás del mismo botón shadcn: en Tauri diálogo nativo, en web
+// `<input type="file">` oculto (vía `src/platform/files.ts`). Al elegir
+// archivo lo añade como guion nuevo con el nombre del archivo como título.
+// Reutilizable en sidebar (desktop) y barra compacta (móvil).
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useScripts } from '@/hooks/useScripts'
-import { IMPORT_ACCEPT, readImportFile } from './scriptFiles'
+import { getPlatformFiles, isTauri } from '@/platform/files'
+import { IMPORT_FILTERS, titleForImport } from './scriptFiles'
 
 interface ImportButtonProps {
   variant?: 'default' | 'outline' | 'ghost' | 'secondary'
@@ -26,14 +28,19 @@ export function ImportButton({
 }: ImportButtonProps) {
   const { importScript } = useScripts()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
 
-  const onPick = async (files: FileList | null) => {
+  const importPicked = (name: string, text: string) => {
+    const { title } = titleForImport(name, text)
+    importScript(title, text)
+    toast.success('Guion importado', { description: title })
+  }
+
+  const onPickWeb = async (files: FileList | null) => {
     const file = files?.[0]
     if (!file) return
     try {
-      const { title, text } = await readImportFile(file)
-      importScript(title, text)
-      toast.success('Guion importado', { description: title })
+      importPicked(file.name, await file.text())
     } catch (err) {
       toast.error('No se pudo importar el archivo', {
         description: err instanceof Error ? err.message : String(err),
@@ -44,21 +51,46 @@ export function ImportButton({
     }
   }
 
+  const onClick = async () => {
+    if (busy) return
+    // Web: el input oculto conserva el flujo actual (chooser del navegador).
+    if (!isTauri()) {
+      fileRef.current?.click()
+      return
+    }
+    setBusy(true)
+    try {
+      const picked = await getPlatformFiles().pickTextFile({
+        title: 'Importar guion',
+        filters: IMPORT_FILTERS,
+      })
+      if (picked) importPicked(picked.name, picked.text)
+    } catch (err) {
+      toast.error('No se pudo importar el archivo', {
+        description: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <>
       <input
         ref={fileRef}
         type="file"
-        accept={IMPORT_ACCEPT}
+        accept=".fountain,.txt"
         aria-label="Importar guion (.fountain, .txt)"
         className="hidden"
-        onChange={(e) => void onPick(e.target.files)}
+        tabIndex={-1}
+        onChange={(e) => void onPickWeb(e.target.files)}
       />
       <Button
         variant={variant}
         size={size}
         className={className}
-        onClick={() => fileRef.current?.click()}
+        onClick={() => void onClick()}
+        disabled={busy}
         aria-label="Importar guion (.fountain, .txt)"
       >
         <Upload aria-hidden="true" />
