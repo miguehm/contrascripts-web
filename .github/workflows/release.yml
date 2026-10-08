@@ -99,7 +99,7 @@ jobs:
           java-version: 21
 
       - name: SDK Android
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Plataforma y build-tools del wrapper
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
